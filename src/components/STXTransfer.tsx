@@ -1,16 +1,31 @@
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { toast } from 'sonner';
-import { Send, Loader2, CheckCircle2, User, Coins } from 'lucide-react';
-import { 
-  makeSTXTokenTransfer, 
-  AnchorMode, 
-  PostConditionMode
-} from '@stacks/transactions';
-import { STACKS_TESTNET, STACKS_MAINNET } from '@stacks/network';
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { createMessage, sha256 } from "@/lib/sip-018";
+import { STACKS_MAINNET, STACKS_TESTNET } from "@stacks/network";
+import {
+  bufferCVFromString,
+  ClarityType,
+  fetchCallReadOnlyFunction,
+  noneCV,
+  OptionalCV,
+  PrincipalCV,
+  ResponseOkCV,
+  someCV,
+  stringAsciiCV,
+  tupleCV,
+  uintCV
+} from "@stacks/transactions";
+import { CheckCircle2, Coins, Loader2, Send, User } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 interface STXTransferProps {
   username: string;
@@ -18,102 +33,115 @@ interface STXTransferProps {
   onLogout: () => void;
 }
 
-export const STXTransfer = ({ username, credential, onLogout }: STXTransferProps) => {
-  const [bnsName, setBnsName] = useState('');
-  const [amount, setAmount] = useState('');
-  const [memo, setMemo] = useState('');
+export const STXTransfer = ({
+  username,
+  credential,
+  onLogout,
+}: STXTransferProps) => {
+  const [bnsName, setBnsName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [memo, setMemo] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [txId, setTxId] = useState('');
-  const [recipientAddress, setRecipientAddress] = useState('');
-  const [network] = useState<'testnet' | 'mainnet'>('testnet');
+  const [txId, setTxId] = useState("");
+  const [recipientAddress, setRecipientAddress] = useState("");
+  const [network] = useState<"testnet" | "mainnet">("mainnet");
 
   const resolveBNSName = async (name: string): Promise<string | null> => {
     try {
-      // BNSv2 name resolution
-      // For demo purposes, we'll use the Stacks API
-      const apiUrl = network === 'mainnet' 
-        ? 'https://api.mainnet.hiro.so'
-        : 'https://api.testnet.hiro.so';
-      
-      const response = await fetch(`${apiUrl}/v1/names/${name}`);
-      if (!response.ok) {
-        throw new Error('BNS name not found');
+      const ownerCV = (await fetchCallReadOnlyFunction({
+        contractAddress: "SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF",
+        contractName: "BNS-V2",
+        functionName: "get-owner-name",
+        functionArgs: name.split(".").map((part) => bufferCVFromString(part)),
+        senderAddress: "SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF",
+        network: network === "mainnet" ? STACKS_MAINNET : STACKS_TESTNET,
+      })) as ResponseOkCV<OptionalCV<PrincipalCV>>;
+
+      if (ownerCV.value.type === ClarityType.OptionalSome) {
+        return ownerCV.value.value.value;
       }
-      
-      const data = await response.json();
-      return data.address;
+      return null;
     } catch (error) {
-      console.error('BNS resolution error:', error);
+      console.error("BNS resolution error:", error);
       return null;
     }
   };
 
-  const signWithPasskey = async (transaction: any): Promise<string> => {
+  const signWithPasskey = async (message: Uint8Array): Promise<string> => {
     try {
-      // Create a challenge from the transaction hash
-      const txBuffer = transaction.serialize();
-      const challenge = await crypto.subtle.digest('SHA-256', txBuffer);
+      // Create a challenge from the message hash
+      const challenge = await sha256(message);
 
       // Get stored credential ID
-      const storedCredentialId = localStorage.getItem('stx-passkey-id');
+      const storedCredentialId = localStorage.getItem("stx-passkey-id");
       if (!storedCredentialId) {
-        throw new Error('No credential found');
+        throw new Error("No credential found");
       }
 
-      const credentialIdBuffer = Uint8Array.from(atob(storedCredentialId), c => c.charCodeAt(0));
+      const credentialIdBuffer = Uint8Array.from(
+        atob(storedCredentialId),
+        (c) => c.charCodeAt(0)
+      );
 
-      const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions = {
-        challenge: new Uint8Array(challenge),
-        allowCredentials: [{
-          id: credentialIdBuffer,
-          type: 'public-key',
-          transports: ['internal'],
-        }],
-        timeout: 60000,
-        userVerification: 'required',
-      };
+      const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions =
+        {
+          challenge: new Uint8Array(challenge),
+          allowCredentials: [
+            {
+              id: credentialIdBuffer,
+              type: "public-key",
+              transports: ["internal"],
+            },
+          ],
+          timeout: 60000,
+          userVerification: "required",
+        };
 
-      const assertion = await navigator.credentials.get({
+      const assertion = (await navigator.credentials.get({
         publicKey: publicKeyCredentialRequestOptions,
-      }) as PublicKeyCredential;
+      })) as PublicKeyCredential;
 
       if (!assertion) {
-        throw new Error('Failed to get assertion');
+        throw new Error("Failed to get assertion");
       }
 
       // Extract signature from assertion response
       const response = assertion.response as AuthenticatorAssertionResponse;
       const signature = new Uint8Array(response.signature);
-      
+
       // Convert signature to hex string
-      return Array.from(signature).map(b => b.toString(16).padStart(2, '0')).join('');
+      return Array.from(signature)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
     } catch (error) {
-      console.error('Passkey signing error:', error);
+      console.error("Passkey signing error:", error);
       throw error;
     }
   };
 
   const handleTransfer = async () => {
     if (!bnsName.trim()) {
-      toast.error('Please enter a BNS name');
+      toast.error("Please enter a BNS name");
       return;
     }
 
     if (!amount || parseFloat(amount) <= 0) {
-      toast.error('Please enter a valid amount');
+      toast.error("Please enter a valid amount");
       return;
     }
 
     setIsLoading(true);
-    setTxId('');
+    setTxId("");
 
     try {
       // Step 1: Resolve BNS name
-      toast.info('Resolving BNS name...');
+      toast.info("Resolving BNS name...");
       const resolvedAddress = await resolveBNSName(bnsName);
-      
+
       if (!resolvedAddress) {
-        toast.error('Could not resolve BNS name. Please check the name and try again.');
+        toast.error(
+          "Could not resolve BNS name. Please check the name and try again."
+        );
         setIsLoading(false);
         return;
       }
@@ -126,47 +154,49 @@ export const STXTransfer = ({ username, credential, onLogout }: STXTransferProps
       // 1. User's private key or signing mechanism
       // 2. Proper network configuration
       // 3. Account nonce from the API
-      
+
       // This is a simplified demo showing the flow
-      toast.info('Preparing transaction...');
-      
+      toast.info("Preparing transaction...");
+
       // For demo purposes, we'll show the signing step
-      toast.info('Requesting passkey signature...');
-      
+      toast.info("Requesting passkey signature...");
+
       // Simulate transaction creation
-      const networkObj = network === 'mainnet' ? STACKS_MAINNET : STACKS_TESTNET;
-      
-      // In a real app, you would:
-      // 1. Get the sender's address from the authenticated session
-      // 2. Fetch the account nonce
-      // 3. Create and sign the transaction
-      // 4. Broadcast it to the network
-      
-      // For this demo, we'll simulate the passkey signing
-      const mockTransaction = {
-        serialize: () => new TextEncoder().encode('mock-transaction-data')
-      };
-      
-      const signature = await signWithPasskey(mockTransaction);
-      
-      toast.success('Transaction signed with passkey!');
-      
+      const networkObj =
+        network === "mainnet" ? STACKS_MAINNET : STACKS_TESTNET;
+
+      const msg = await createMessage(
+        tupleCV({
+          topic: stringAsciiCV("stx-transfer"),
+          recipient: bufferCVFromString(resolvedAddress),
+          amount: uintCV(amount),
+          memo: memo ? someCV(bufferCVFromString(memo)) : noneCV(),
+        })
+      );
+
+      const signature = await signWithPasskey(msg);
+
+      toast.success("Message signed with passkey!" + signature);
+
       // Simulate successful transaction
-      const mockTxId = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(32)))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-      
+      const mockTxId =
+        "0x" +
+        Array.from(crypto.getRandomValues(new Uint8Array(32)))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+
       setTxId(mockTxId);
-      toast.success('Transaction broadcast successfully!');
-      
+      toast.success("Transaction broadcast successfully!");
+
       // Reset form
-      setBnsName('');
-      setAmount('');
-      setMemo('');
+      setBnsName("");
+      setAmount("");
+      setMemo("");
+      setRecipientAddress("");
       
     } catch (error: any) {
-      console.error('Transfer error:', error);
-      toast.error('Transfer failed: ' + error.message);
+      console.error("Transfer error:", error);
+      toast.error("Transfer failed: " + error.message);
     } finally {
       setIsLoading(false);
     }
@@ -179,7 +209,9 @@ export const STXTransfer = ({ username, credential, onLogout }: STXTransferProps
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-2xl">Send STX</CardTitle>
-              <CardDescription>Transfer STX tokens using BNSv2 names</CardDescription>
+              <CardDescription>
+                Transfer STX tokens using BNSv2 names
+              </CardDescription>
             </div>
             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
               <Send className="w-6 h-6 text-primary-foreground" />
@@ -190,7 +222,9 @@ export const STXTransfer = ({ username, credential, onLogout }: STXTransferProps
           <div className="p-3 bg-muted/50 rounded-lg flex items-center justify-between">
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Signed in as</span>
+              <span className="text-sm text-muted-foreground">
+                Signed in as
+              </span>
             </div>
             <span className="font-semibold">{username}</span>
           </div>
@@ -206,7 +240,8 @@ export const STXTransfer = ({ username, credential, onLogout }: STXTransferProps
             />
             {recipientAddress && (
               <p className="text-xs text-muted-foreground">
-                Resolves to: {recipientAddress.substring(0, 10)}...{recipientAddress.substring(recipientAddress.length - 6)}
+                Resolves to: {recipientAddress.substring(0, 10)}...
+                {recipientAddress.substring(recipientAddress.length - 6)}
               </p>
             )}
           </div>
