@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -29,6 +29,19 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
         return;
       }
 
+      // Determine the correct rp.id based on environment
+      let rpId = window.location.hostname;
+      
+      // Handle localhost variations
+      if (rpId === '127.0.0.1' || rpId === '::1' || rpId.includes(':')) {
+        rpId = 'localhost';
+      }
+      
+      // Remove port if present
+      rpId = rpId.split(':')[0];
+
+      console.log('Creating passkey with rp.id:', rpId);
+
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
 
@@ -39,7 +52,7 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
         challenge,
         rp: {
           name: 'STX Transfer',
-          id: window.location.hostname,
+          id: rpId,
         },
         user: {
           id: userId,
@@ -51,8 +64,7 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
           { alg: -257, type: 'public-key' }, // RS256
         ],
         authenticatorSelection: {
-          authenticatorAttachment: 'platform',
-          userVerification: 'required',
+          userVerification: 'preferred',
         },
         timeout: 60000,
         attestation: 'none',
@@ -132,13 +144,13 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
   };
 
   // Check if user has a passkey on mount
-  useState(() => {
+  useEffect(() => {
     const storedUser = localStorage.getItem('stx-passkey-user');
     if (storedUser) {
       setHasPasskey(true);
       setUsername(storedUser);
     }
-  });
+  }, []);
 
   return (
     <Card className="w-full max-w-md backdrop-blur-sm bg-card/95 border-border/50 shadow-xl">
