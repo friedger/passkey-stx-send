@@ -8,22 +8,8 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createMessage, sha256 } from "@/lib/sip-018";
-import { STACKS_MAINNET, STACKS_TESTNET } from "@stacks/network";
-import {
-  bufferCVFromString,
-  ClarityType,
-  fetchCallReadOnlyFunction,
-  noneCV,
-  OptionalCV,
-  PrincipalCV,
-  ResponseOkCV,
-  someCV,
-  stringAsciiCV,
-  tupleCV,
-  uintCV
-} from "@stacks/transactions";
-import { CheckCircle2, Loader2, User, Ghost } from "lucide-react";
+import { NotTokenService } from "@/lib/not-token-service";
+import { CheckCircle2, Loader2, User } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -46,75 +32,6 @@ export const NothingTransfer = ({
   const [recipientAddress, setRecipientAddress] = useState("");
   const [network] = useState<"testnet" | "mainnet">("mainnet");
 
-  const resolveBNSName = async (name: string): Promise<string | null> => {
-    try {
-      const ownerCV = (await fetchCallReadOnlyFunction({
-        contractAddress: "SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF",
-        contractName: "BNS-V2",
-        functionName: "get-owner-name",
-        functionArgs: name.split(".").map((part) => bufferCVFromString(part)),
-        senderAddress: "SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF",
-        network: network === "mainnet" ? STACKS_MAINNET : STACKS_TESTNET,
-      })) as ResponseOkCV<OptionalCV<PrincipalCV>>;
-
-      if (ownerCV.value.type === ClarityType.OptionalSome) {
-        return ownerCV.value.value.value;
-      }
-      return null;
-    } catch (error) {
-      console.error("BNS resolution error:", error);
-      return null;
-    }
-  };
-
-  const signWithPasskey = async (message: Uint8Array): Promise<string> => {
-    try {
-      const challenge = await sha256(message);
-
-      const storedCredentialId = localStorage.getItem("stx-passkey-id");
-      if (!storedCredentialId) {
-        throw new Error("No credential found");
-      }
-
-      const credentialIdBuffer = Uint8Array.from(
-        atob(storedCredentialId),
-        (c) => c.charCodeAt(0)
-      );
-
-      const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions =
-        {
-          challenge: new Uint8Array(challenge),
-          allowCredentials: [
-            {
-              id: credentialIdBuffer,
-              type: "public-key",
-              transports: ["internal"],
-            },
-          ],
-          timeout: 60000,
-          userVerification: "required",
-        };
-
-      const assertion = (await navigator.credentials.get({
-        publicKey: publicKeyCredentialRequestOptions,
-      })) as PublicKeyCredential;
-
-      if (!assertion) {
-        throw new Error("Failed to get assertion");
-      }
-
-      const response = assertion.response as AuthenticatorAssertionResponse;
-      const signature = new Uint8Array(response.signature);
-
-      return Array.from(signature)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-    } catch (error) {
-      console.error("Passkey signing error:", error);
-      throw error;
-    }
-  };
-
   const handleTransfer = async () => {
     if (!bnsName.trim()) {
       toast.error("Please enter a BNS name");
@@ -131,12 +48,10 @@ export const NothingTransfer = ({
 
     try {
       toast.info("Resolving BNS name...");
-      const resolvedAddress = await resolveBNSName(bnsName);
+      const resolvedAddress = await NotTokenService.resolveBnsName(bnsName, network);
 
       if (!resolvedAddress) {
-        toast.error(
-          "Could not resolve BNS name. Please check the name and try again."
-        );
+        toast.error("Could not resolve BNS name. Please check the name and try again.");
         setIsLoading(false);
         return;
       }
@@ -146,27 +61,19 @@ export const NothingTransfer = ({
 
       toast.info("Preparing to send Nothing...");
 
-      const msg = await createMessage(
-        tupleCV({
-          topic: stringAsciiCV("not-transfer"),
-          recipient: bufferCVFromString(resolvedAddress),
-          amount: uintCV(amount),
-          memo: memo ? someCV(bufferCVFromString(memo)) : noneCV(),
-        })
-      );
+      const result = await NotTokenService.transfer({
+        recipientBnsName: bnsName,
+        amount,
+        memo,
+        network,
+      });
 
-      toast.info("Requesting passkey signature...");
-      const signature = await signWithPasskey(msg);
+      if (!result.success) {
+        toast.error(result.error || "Transfer failed");
+        return;
+      }
 
-      toast.success("Nothing signed with passkey!");
-
-      const mockTxId =
-        "0x" +
-        Array.from(crypto.getRandomValues(new Uint8Array(32)))
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
-
-      setTxId(mockTxId);
+      setTxId(result.txId!);
       toast.success("Nothing sent successfully! 🎉");
 
       setBnsName("");
@@ -188,13 +95,17 @@ export const NothingTransfer = ({
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-2xl">Send Nothing</CardTitle>
+              <CardTitle className="text-2xl">Send {NotTokenService.name}</CardTitle>
               <CardDescription>
                 Give someone absolutely Nothing using their BNS name
               </CardDescription>
             </div>
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-              <Ghost className="w-6 h-6 text-primary-foreground" />
+            <div className="w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center bg-background">
+              <img 
+                src={NotTokenService.logo} 
+                alt={`${NotTokenService.symbol} token`}
+                className="w-full h-full object-contain"
+              />
             </div>
           </div>
         </CardHeader>
@@ -232,15 +143,16 @@ export const NothingTransfer = ({
               <Input
                 id="amount"
                 type="number"
-                step="0.000001"
-                placeholder="0.00"
+                step="1"
+                min="1"
+                placeholder="0"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 disabled={isLoading}
                 className="pr-16"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-muted-foreground text-sm font-medium">
-                NOT
+                {NotTokenService.symbol}
               </div>
             </div>
           </div>
@@ -271,7 +183,11 @@ export const NothingTransfer = ({
               </>
             ) : (
               <>
-                <Ghost className="w-4 h-4" />
+                <img 
+                  src={NotTokenService.logo} 
+                  alt="" 
+                  className="w-4 h-4"
+                />
                 Send Nothing
               </>
             )}
@@ -301,7 +217,7 @@ export const NothingTransfer = ({
                   TX ID: {txId}
                 </p>
                 <a
-                  href={`https://explorer.stacks.co/txid/${txId}?chain=${network}`}
+                  href={NotTokenService.getExplorerUrl(txId, network)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-primary hover:underline inline-block mt-2"
