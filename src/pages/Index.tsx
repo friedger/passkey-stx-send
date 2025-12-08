@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { PasskeyAuth } from '@/components/PasskeyAuth';
 import { NothingTransfer } from '@/components/NothingTransfer';
-import { Ghost } from 'lucide-react';
+import { NotTokenService } from '@/lib/not-token-service';
 
 const Index = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -25,8 +25,12 @@ const Index = () => {
       <div className="w-full max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8 space-y-3">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-accent shadow-lg mb-4">
-            <Ghost className="w-10 h-10 text-primary-foreground" />
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-background shadow-lg mb-4 overflow-hidden">
+            <img 
+              src={NotTokenService.logo} 
+              alt={`${NotTokenService.symbol} token`}
+              className="w-full h-full object-contain"
+            />
           </div>
           <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
             Send Nothing
