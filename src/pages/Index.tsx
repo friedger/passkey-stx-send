@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { PasskeyAuth } from '@/components/PasskeyAuth';
-import { STXTransfer } from '@/components/STXTransfer';
-import { Coins } from 'lucide-react';
+import { NothingTransfer } from '@/components/NothingTransfer';
+import { Ghost } from 'lucide-react';
 
 const Index = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -26,13 +26,16 @@ const Index = () => {
         {/* Header */}
         <div className="text-center mb-8 space-y-3">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-accent shadow-lg mb-4">
-            <Coins className="w-10 h-10 text-primary-foreground" />
+            <Ghost className="w-10 h-10 text-primary-foreground" />
           </div>
           <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            STX Transfer
+            Send Nothing
           </h1>
           <p className="text-lg text-muted-foreground max-w-md mx-auto">
-            Send STX tokens securely using BNSv2 names with passkey authentication
+            Give someone absolutely Nothing using their BNS name
+          </p>
+          <p className="text-sm text-muted-foreground/70">
+            Because sometimes, Nothing is exactly what they need
           </p>
         </div>
 
@@ -41,7 +44,7 @@ const Index = () => {
           {!isAuthenticated ? (
             <PasskeyAuth onAuthenticated={handleAuthenticated} />
           ) : (
-            <STXTransfer 
+            <NothingTransfer 
               username={username} 
               credential={credential}
               onLogout={handleLogout}
@@ -51,7 +54,7 @@ const Index = () => {
 
         {/* Footer */}
         <div className="text-center mt-12 text-sm text-muted-foreground">
-          <p>Secured with WebAuthn passkeys • Powered by Stacks blockchain</p>
+          <p>Secured with WebAuthn passkeys • Powered by NOT tokens on Stacks</p>
         </div>
       </div>
     </div>

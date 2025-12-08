@@ -23,21 +23,21 @@ import {
   tupleCV,
   uintCV
 } from "@stacks/transactions";
-import { CheckCircle2, Coins, Loader2, Send, User } from "lucide-react";
+import { CheckCircle2, Loader2, User, Ghost } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-interface STXTransferProps {
+interface NothingTransferProps {
   username: string;
   credential: any;
   onLogout: () => void;
 }
 
-export const STXTransfer = ({
+export const NothingTransfer = ({
   username,
   credential,
   onLogout,
-}: STXTransferProps) => {
+}: NothingTransferProps) => {
   const [bnsName, setBnsName] = useState("");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
@@ -69,10 +69,8 @@ export const STXTransfer = ({
 
   const signWithPasskey = async (message: Uint8Array): Promise<string> => {
     try {
-      // Create a challenge from the message hash
       const challenge = await sha256(message);
 
-      // Get stored credential ID
       const storedCredentialId = localStorage.getItem("stx-passkey-id");
       if (!storedCredentialId) {
         throw new Error("No credential found");
@@ -105,11 +103,9 @@ export const STXTransfer = ({
         throw new Error("Failed to get assertion");
       }
 
-      // Extract signature from assertion response
       const response = assertion.response as AuthenticatorAssertionResponse;
       const signature = new Uint8Array(response.signature);
 
-      // Convert signature to hex string
       return Array.from(signature)
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
@@ -126,7 +122,7 @@ export const STXTransfer = ({
     }
 
     if (!amount || parseFloat(amount) <= 0) {
-      toast.error("Please enter a valid amount");
+      toast.error("Please enter a valid amount of Nothing");
       return;
     }
 
@@ -134,7 +130,6 @@ export const STXTransfer = ({
     setTxId("");
 
     try {
-      // Step 1: Resolve BNS name
       toast.info("Resolving BNS name...");
       const resolvedAddress = await resolveBNSName(bnsName);
 
@@ -149,36 +144,22 @@ export const STXTransfer = ({
       setRecipientAddress(resolvedAddress);
       toast.success(`Resolved to: ${resolvedAddress.substring(0, 10)}...`);
 
-      // Step 2: Create transaction
-      // Note: For a real implementation, you would need:
-      // 1. User's private key or signing mechanism
-      // 2. Proper network configuration
-      // 3. Account nonce from the API
-
-      // This is a simplified demo showing the flow
-      toast.info("Preparing transaction...");
-
-      // For demo purposes, we'll show the signing step
-      toast.info("Requesting passkey signature...");
-
-      // Simulate transaction creation
-      const networkObj =
-        network === "mainnet" ? STACKS_MAINNET : STACKS_TESTNET;
+      toast.info("Preparing to send Nothing...");
 
       const msg = await createMessage(
         tupleCV({
-          topic: stringAsciiCV("stx-transfer"),
+          topic: stringAsciiCV("not-transfer"),
           recipient: bufferCVFromString(resolvedAddress),
           amount: uintCV(amount),
           memo: memo ? someCV(bufferCVFromString(memo)) : noneCV(),
         })
       );
 
+      toast.info("Requesting passkey signature...");
       const signature = await signWithPasskey(msg);
 
-      toast.success("Message signed with passkey!" + signature);
+      toast.success("Nothing signed with passkey!");
 
-      // Simulate successful transaction
       const mockTxId =
         "0x" +
         Array.from(crypto.getRandomValues(new Uint8Array(32)))
@@ -186,9 +167,8 @@ export const STXTransfer = ({
           .join("");
 
       setTxId(mockTxId);
-      toast.success("Transaction broadcast successfully!");
+      toast.success("Nothing sent successfully! 🎉");
 
-      // Reset form
       setBnsName("");
       setAmount("");
       setMemo("");
@@ -196,7 +176,7 @@ export const STXTransfer = ({
       
     } catch (error: any) {
       console.error("Transfer error:", error);
-      toast.error("Transfer failed: " + error.message);
+      toast.error("Failed to send Nothing: " + error.message);
     } finally {
       setIsLoading(false);
     }
@@ -208,13 +188,13 @@ export const STXTransfer = ({
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-2xl">Send STX</CardTitle>
+              <CardTitle className="text-2xl">Send Nothing</CardTitle>
               <CardDescription>
-                Transfer STX tokens using BNSv2 names
+                Give someone absolutely Nothing using their BNS name
               </CardDescription>
             </div>
             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-              <Send className="w-6 h-6 text-primary-foreground" />
+              <Ghost className="w-6 h-6 text-primary-foreground" />
             </div>
           </div>
         </CardHeader>
@@ -230,10 +210,10 @@ export const STXTransfer = ({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="bnsname">Recipient BNS Name</Label>
+            <Label htmlFor="bnsname">Who gets Nothing?</Label>
             <Input
               id="bnsname"
-              placeholder="example.btc"
+              placeholder="lucky.btc"
               value={bnsName}
               onChange={(e) => setBnsName(e.target.value)}
               disabled={isLoading}
@@ -247,7 +227,7 @@ export const STXTransfer = ({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="amount">Amount (STX)</Label>
+            <Label htmlFor="amount">How much Nothing?</Label>
             <div className="relative">
               <Input
                 id="amount"
@@ -257,19 +237,19 @@ export const STXTransfer = ({
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 disabled={isLoading}
-                className="pr-12"
+                className="pr-16"
               />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-muted-foreground">
-                <Coins className="w-4 h-4" />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-muted-foreground text-sm font-medium">
+                NOT
               </div>
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="memo">Memo (optional)</Label>
+            <Label htmlFor="memo">Say something about Nothing</Label>
             <Input
               id="memo"
-              placeholder="Add a message..."
+              placeholder="Here's Nothing for you..."
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
               disabled={isLoading}
@@ -287,12 +267,12 @@ export const STXTransfer = ({
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Processing...
+                Sending Nothing...
               </>
             ) : (
               <>
-                <Send className="w-4 h-4" />
-                Send STX
+                <Ghost className="w-4 h-4" />
+                Send Nothing
               </>
             )}
           </Button>
@@ -316,7 +296,7 @@ export const STXTransfer = ({
                 <CheckCircle2 className="w-5 h-5 text-primary" />
               </div>
               <div className="flex-1 space-y-1">
-                <p className="font-semibold text-sm">Transaction Successful</p>
+                <p className="font-semibold text-sm">Nothing Sent Successfully!</p>
                 <p className="text-xs text-muted-foreground break-all">
                   TX ID: {txId}
                 </p>
