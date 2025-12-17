@@ -15,6 +15,35 @@ import {
 import { createMessage, sha256 } from "./sip-018";
 import notTokenLogo from "@/assets/not-token-logo.png";
 import { bytesToHex } from "@stacks/common";
+import { supabase } from "@/integrations/supabase/client";
+
+async function submitSignatureToBackend(
+  recipientAddress: string,
+  amount: string,
+  memo: string | undefined,
+  message: Uint8Array,
+  signature: string
+): Promise<{ txId: string }> {
+  const { data, error } = await supabase.functions.invoke("submit-not-transfer", {
+    body: {
+      recipientAddress,
+      amount,
+      memo,
+      message: Array.from(message),
+      signature,
+    },
+  });
+
+  if (error) {
+    throw new Error(error.message || "Failed to submit transfer");
+  }
+
+  if (!data.success) {
+    throw new Error(data.error || "Transfer submission failed");
+  }
+
+  return { txId: data.txId };
+}
 
 // NOT Token Contract Details
 const NOT_TOKEN_CONTRACT = {

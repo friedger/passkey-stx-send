@@ -1,1 +1,4 @@
 project_id = "ffhnifyiaheghtkuttns"
+
+[functions.submit-not-transfer]
+verify_jwt = false
