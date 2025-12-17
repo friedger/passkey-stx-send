@@ -83,18 +83,14 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
       })) as PublicKeyCredential;
 
       if (credential) {
-        // Store credential info locally (encode rawId as base64)
+        // Store credential info locally
         localStorage.setItem("stx-passkey-user", username);
-        console.log(
-          "Credential created:",
-          credential,
-          credential.id,
-          credential.rawId
-        );
-        const rawIdBuffer = new Uint8Array(credential.rawId);
-        const base64Id = btoa(String.fromCharCode(...rawIdBuffer));      
+        // Convert rawId to base64 for storage
+        const rawIdArray = new Uint8Array(credential.rawId);
+        const base64Id = btoa(String.fromCharCode(...Array.from(rawIdArray)));
         localStorage.setItem("stx-passkey-id", base64Id);
-        console.log("Stored Credential ID (base64):", bytesToHex(rawIdBuffer));
+        console.log("Credential created:", credential);
+        console.log("Stored Credential ID (base64):", base64Id);
 
         toast.success("Passkey created successfully!");
         onAuthenticated(username, credential);

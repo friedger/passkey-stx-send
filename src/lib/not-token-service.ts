@@ -136,15 +136,27 @@ export const NotTokenService = {
   ): Promise<string> {
     const challenge = await sha256(message);
 
-    const credentialIdBuffer = Uint8Array.from(atob(credentialId), (c) =>
-      c.charCodeAt(0)
+    // Decode base64 string back to Uint8Array
+    const credentialIdBuffer = new Uint8Array(
+      atob(credentialId).split('').map(c => c.charCodeAt(0))
     );
 
     console.log("Stored Credential ID:", credentialId, bytesToHex(credentialIdBuffer));
 
+    // Determine the correct rp.id based on environment (must match creation)
+    let rpId = window.location.hostname;
+    if (rpId === "127.0.0.1" || rpId === "::1" || rpId.includes(":")) {
+      rpId = "localhost";
+    }
+    rpId = rpId.split(":")[0];
+
+    console.log("Authentication RP ID:", rpId);
+    console.log("Challenge:", bytesToHex(new Uint8Array(challenge)));
+
     const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions =
       {
         challenge: new Uint8Array(challenge),
+        rpId: rpId, // Add rpId to match the one used during creation
         allowCredentials: [
           {
             id: credentialIdBuffer,
@@ -153,7 +165,7 @@ export const NotTokenService = {
           },
         ],
         timeout: 60000,
-        userVerification: "required",
+        userVerification: "preferred", // Changed to "preferred" for better compatibility
       };
 
     const assertion = (await navigator.credentials.get({
@@ -212,7 +224,7 @@ export const NotTokenService = {
       const signature = await this.signWithPasskey(message, storedCredentialId);
 
       const submitResult = await submitSignatureToBackend(recipientAddress, amount, memo, message, signature);
-      // Step 5: Generate transaction ID (mock for demo)
+
       const txId = submitResult.txId;
 
       return {
