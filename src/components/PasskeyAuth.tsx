@@ -1,23 +1,30 @@
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { toast } from 'sonner';
-import { Fingerprint, Loader2 } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { bytesToHex } from "@stacks/common";
+import { Fingerprint, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 interface PasskeyAuthProps {
   onAuthenticated: (username: string, credential: any) => void;
 }
 
 export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [hasPasskey, setHasPasskey] = useState(false);
 
   const createPasskey = async () => {
     if (!username.trim()) {
-      toast.error('Please enter a username');
+      toast.error("Please enter a username");
       return;
     }
 
@@ -25,22 +32,22 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
     try {
       // Check if WebAuthn is supported
       if (!window.PublicKeyCredential) {
-        toast.error('Passkeys are not supported on this device');
+        toast.error("Passkeys are not supported on this device");
         return;
       }
 
       // Determine the correct rp.id based on environment
       let rpId = window.location.hostname;
-      
-      // Handle localhost variations
-      if (rpId === '127.0.0.1' || rpId === '::1' || rpId.includes(':')) {
-        rpId = 'localhost';
-      }
-      
-      // Remove port if present
-      rpId = rpId.split(':')[0];
 
-      console.log('Creating passkey with rp.id:', rpId);
+      // Handle localhost variations
+      if (rpId === "127.0.0.1" || rpId === "::1" || rpId.includes(":")) {
+        rpId = "localhost";
+      }
+
+      // Remove port if present
+      rpId = rpId.split(":")[0];
+
+      console.log("Creating passkey with rp.id:", rpId);
 
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
@@ -48,46 +55,56 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
       const userId = new Uint8Array(16);
       crypto.getRandomValues(userId);
 
-      const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
-        challenge,
-        rp: {
-          name: 'STX Transfer',
-          id: rpId,
-        },
-        user: {
-          id: userId,
-          name: username,
-          displayName: username,
-        },
-        pubKeyCredParams: [
-          { alg: -7, type: 'public-key' },  // ES256
-          { alg: -257, type: 'public-key' }, // RS256
-        ],
-        authenticatorSelection: {
-          userVerification: 'preferred',
-        },
-        timeout: 60000,
-        attestation: 'none',
-      };
+      const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions =
+        {
+          challenge,
+          rp: {
+            name: "STX Transfer",
+            id: rpId,
+          },
+          user: {
+            id: userId,
+            name: username,
+            displayName: username,
+          },
+          pubKeyCredParams: [
+            { alg: -7, type: "public-key" }, // ES256
+            { alg: -257, type: "public-key" }, // RS256
+          ],
+          authenticatorSelection: {
+            userVerification: "preferred",
+          },
+          timeout: 60000,
+          attestation: "none",
+        };
 
-      const credential = await navigator.credentials.create({
+      const credential = (await navigator.credentials.create({
         publicKey: publicKeyCredentialCreationOptions,
-      }) as PublicKeyCredential;
+      })) as PublicKeyCredential;
 
       if (credential) {
-        // Store credential info locally
-        localStorage.setItem('stx-passkey-user', username);
-        localStorage.setItem('stx-passkey-id', credential.id);
-        
-        toast.success('Passkey created successfully!');
+        // Store credential info locally (encode rawId as base64)
+        localStorage.setItem("stx-passkey-user", username);
+        console.log(
+          "Credential created:",
+          credential,
+          credential.id,
+          credential.rawId
+        );
+        const rawIdBuffer = new Uint8Array(credential.rawId);
+        const base64Id = btoa(String.fromCharCode(...rawIdBuffer));      
+        localStorage.setItem("stx-passkey-id", base64Id);
+        console.log("Stored Credential ID (base64):", bytesToHex(rawIdBuffer));
+
+        toast.success("Passkey created successfully!");
         onAuthenticated(username, credential);
       }
     } catch (error: any) {
-      console.error('Passkey creation error:', error);
-      if (error.name === 'NotAllowedError') {
-        toast.error('Passkey creation was cancelled');
+      console.error("Passkey creation error:", error);
+      if (error.name === "NotAllowedError") {
+        toast.error("Passkey creation was cancelled");
       } else {
-        toast.error('Failed to create passkey: ' + error.message);
+        toast.error("Failed to create passkey: " + error.message);
       }
     } finally {
       setIsLoading(false);
@@ -97,11 +114,11 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
   const authenticateWithPasskey = async () => {
     setIsLoading(true);
     try {
-      const storedUsername = localStorage.getItem('stx-passkey-user');
-      const storedCredentialId = localStorage.getItem('stx-passkey-id');
+      const storedUsername = localStorage.getItem("stx-passkey-user");
+      const storedCredentialId = localStorage.getItem("stx-passkey-id");
 
       if (!storedUsername || !storedCredentialId) {
-        toast.error('No passkey found. Please create one first.');
+        toast.error("No passkey found. Please create one first.");
         setHasPasskey(false);
         return;
       }
@@ -109,34 +126,43 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
 
+      console.log("Stored Credential ID:", storedCredentialId);
+
       // Convert credential ID from base64
-      const credentialIdBuffer = Uint8Array.from(atob(storedCredentialId), c => c.charCodeAt(0));
+      const credentialIdBuffer = Uint8Array.from(
+        atob(storedCredentialId),
+        (c) => c.charCodeAt(0)
+      );
 
-      const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions = {
-        challenge,
-        allowCredentials: [{
-          id: credentialIdBuffer,
-          type: 'public-key',
-          transports: ['internal'],
-        }],
-        timeout: 60000,
-        userVerification: 'required',
-      };
+      
+      const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions =
+        {
+          challenge,
+          allowCredentials: [
+            {
+              id: credentialIdBuffer,
+              type: "public-key",
+              transports: ["internal"],
+            },
+          ],
+          timeout: 60000,
+          userVerification: "required",
+        };
 
-      const assertion = await navigator.credentials.get({
+      const assertion = (await navigator.credentials.get({
         publicKey: publicKeyCredentialRequestOptions,
-      }) as PublicKeyCredential;
+      })) as PublicKeyCredential;
 
       if (assertion) {
-        toast.success('Authentication successful!');
+        toast.success("Authentication successful!");
         onAuthenticated(storedUsername, assertion);
       }
     } catch (error: any) {
-      console.error('Authentication error:', error);
-      if (error.name === 'NotAllowedError') {
-        toast.error('Authentication was cancelled');
+      console.error("Authentication error:", error);
+      if (error.name === "NotAllowedError") {
+        toast.error("Authentication was cancelled");
       } else {
-        toast.error('Authentication failed');
+        toast.error("Authentication failed");
       }
     } finally {
       setIsLoading(false);
@@ -145,7 +171,7 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
 
   // Check if user has a passkey on mount
   useEffect(() => {
-    const storedUser = localStorage.getItem('stx-passkey-user');
+    const storedUser = localStorage.getItem("stx-passkey-user");
     if (storedUser) {
       setHasPasskey(true);
       setUsername(storedUser);
@@ -159,12 +185,12 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
           <Fingerprint className="w-8 h-8 text-primary-foreground" />
         </div>
         <CardTitle className="text-2xl">
-          {hasPasskey ? 'Welcome Back' : 'Secure Authentication'}
+          {hasPasskey ? "Welcome Back" : "Secure Authentication"}
         </CardTitle>
         <CardDescription>
-          {hasPasskey 
-            ? 'Use your passkey to authenticate securely'
-            : 'Create a passkey to get started with STX transfers'}
+          {hasPasskey
+            ? "Use your passkey to authenticate securely"
+            : "Create a passkey to get started with STX transfers"}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -176,7 +202,7 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
               placeholder="Enter your username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && createPasskey()}
+              onKeyPress={(e) => e.key === "Enter" && createPasskey()}
               disabled={isLoading}
             />
           </div>
@@ -184,7 +210,9 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
 
         {hasPasskey && (
           <div className="text-center p-4 bg-muted/50 rounded-lg">
-            <p className="text-sm text-muted-foreground mb-1">Authenticating as</p>
+            <p className="text-sm text-muted-foreground mb-1">
+              Authenticating as
+            </p>
             <p className="font-semibold text-foreground">{username}</p>
           </div>
         )}
@@ -217,11 +245,11 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
         {hasPasskey && (
           <Button
             onClick={() => {
-              localStorage.removeItem('stx-passkey-user');
-              localStorage.removeItem('stx-passkey-id');
+              localStorage.removeItem("stx-passkey-user");
+              localStorage.removeItem("stx-passkey-id");
               setHasPasskey(false);
-              setUsername('');
-              toast.info('Passkey removed');
+              setUsername("");
+              toast.info("Passkey removed");
             }}
             variant="ghost"
             className="w-full text-sm"

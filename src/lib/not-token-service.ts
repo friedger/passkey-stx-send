@@ -14,6 +14,7 @@ import {
 } from "@stacks/transactions";
 import { createMessage, sha256 } from "./sip-018";
 import notTokenLogo from "@/assets/not-token-logo.png";
+import { bytesToHex } from "@stacks/common";
 
 // NOT Token Contract Details
 const NOT_TOKEN_CONTRACT = {
@@ -110,6 +111,8 @@ export const NotTokenService = {
       c.charCodeAt(0)
     );
 
+    console.log("Stored Credential ID:", credentialId, bytesToHex(credentialIdBuffer));
+
     const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions =
       {
         challenge: new Uint8Array(challenge),
@@ -179,12 +182,9 @@ export const NotTokenService = {
       // Step 4: Sign with passkey
       const signature = await this.signWithPasskey(message, storedCredentialId);
 
+      const submitResult = await submitSignatureToBackend(recipientAddress, amount, memo, message, signature);
       // Step 5: Generate transaction ID (mock for demo)
-      const txId =
-        "0x" +
-        Array.from(crypto.getRandomValues(new Uint8Array(32)))
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
+      const txId = submitResult.txId;
 
       return {
         success: true,
