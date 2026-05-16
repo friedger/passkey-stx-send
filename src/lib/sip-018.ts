@@ -1,11 +1,9 @@
 import {
   ClarityValue,
-  serializeCV,
   serializeCVBytes,
-  signWithKey,
   stringAsciiCV,
   tupleCV,
-  uintCV,
+  uintCV
 } from "@stacks/transactions";
 
 const structuredDataPrefix = new Uint8Array([
@@ -33,7 +31,7 @@ async function structuredDataHash(structuredData: ClarityValue): Promise<Uint8Ar
 export async function createMessage(structuredData: ClarityValue): Promise<Uint8Array> {
   const domainHash = await structuredDataHash(
     tupleCV({
-      name: stringAsciiCV("Clarity Smart Contract"),
+      name: stringAsciiCV("send-nothing"),
       version: stringAsciiCV("1.0.0"),
       "chain-id": uintCV(chainIds.mainnet),
     })
