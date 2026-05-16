@@ -347,16 +347,16 @@ export const NotTokenService = {
         return { success: false, error: "Could not resolve BNS name" };
       }
 
-      // Step 2: Check the passkey is registered on-chain and read its nonce
+      // Step 2: Read the passkey's on-chain state. Any passkey gets one
+      // free transfer (up to 10k NOT); a registered + enabled passkey can
+      // transfer repeatedly. Only a used or disabled passkey is blocked.
       const state = await this.getPasskeyState(publicKey, network);
-      if (!state.registered) {
+      if (state.registered && !state.enabled) {
         return {
           success: false,
-          error: "This passkey is not registered with the contract yet.",
+          error:
+            "This passkey can't send NOT - its free transfer was already used, or it was disabled.",
         };
-      }
-      if (!state.enabled) {
-        return { success: false, error: "This passkey has been disabled." };
       }
 
       // Step 3: Build the SIP-018 transfer message (the WebAuthn challenge)

@@ -158,7 +158,7 @@ describe("passkey-not-sender", () => {
   });
 
   describe("transfer-not", () => {
-    it("rejects an unregistered passkey (ERR_PASSKEY_NOT_FOUND)", () => {
+    it("rejects an unregistered transfer above the free limit (ERR_AMOUNT_TOO_LARGE)", () => {
       const { result } = typedCallPublicFn({
         simnet,
         abi,
@@ -166,7 +166,7 @@ describe("passkey-not-sender", () => {
         functionName: "transfer-not",
         functionArgs: [
           `0x02${"cc".repeat(32)}`, // unregistered public-key
-          1n, // amount
+          10001n, // amount - over the 10,000 NOT free limit
           deployer, // recipient
           null, // memo
           0n, // nonce
@@ -177,7 +177,7 @@ describe("passkey-not-sender", () => {
         ],
         sender: deployer,
       });
-      expect(result).toEqual({ error: 101n });
+      expect(result).toEqual({ error: 110n });
     });
 
     it("happy path: registers a passkey and transfers with a valid signature", () => {

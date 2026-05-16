@@ -554,6 +554,16 @@ export const passkeyNotSenderAbi = {
       "access": "constant"
     },
     {
+      "name": "ERR_AMOUNT_TOO_LARGE",
+      "type": {
+        "response": {
+          "ok": "none",
+          "error": "uint128"
+        }
+      },
+      "access": "constant"
+    },
+    {
       "name": "ERR_BAD_AUTH_DATA",
       "type": {
         "response": {
@@ -641,6 +651,11 @@ export const passkeyNotSenderAbi = {
           "error": "uint128"
         }
       },
+      "access": "constant"
+    },
+    {
+      "name": "FREE_LIMIT",
+      "type": "uint128",
       "access": "constant"
     },
     {

@@ -12,6 +12,11 @@
 (define-constant ERR_ALREADY_REGISTERED (err u107))
 (define-constant ERR_RP_ID_NOT_SET (err u108))
 (define-constant ERR_BAD_AUTH_DATA (err u109))
+(define-constant ERR_AMOUNT_TOO_LARGE (err u110))
+
+;; An unregistered passkey may send at most this many NOT, exactly once.
+;; NOT has 0 decimals, so this is 10,000 NOT.
+(define-constant FREE_LIMIT u10000)
 
 ;; --- SIP-018 structured data ---
 (define-constant SIP018_PREFIX 0x534950303138) ;; ascii "SIP018"
@@ -278,12 +283,20 @@
     (signature (buff 64))
   )
   (let (
-      (passkey (unwrap! (map-get? passkeys public-key) ERR_PASSKEY_NOT_FOUND))
+      (entry (map-get? passkeys public-key))
+      ;; "registered" = an entry the owner added and left enabled; such a
+      ;; passkey may transfer repeatedly with no amount cap.
+      (registered (match entry e (get enabled e) false))
+      (expected-nonce (match entry e (get nonce e) u0))
       (challenge (transfer-message-hash amount recipient memo nonce))
     )
-    ;; passkey must be registered, enabled, and at the expected nonce
-    (asserts! (get enabled passkey) ERR_PASSKEY_DISABLED)
-    (asserts! (is-eq nonce (get nonce passkey)) ERR_BAD_NONCE)
+    ;; An unregistered passkey gets ONE free transfer: with no entry yet it
+    ;; is allowed; afterwards it has an entry that is not enabled, which is
+    ;; blocked here (this also blocks owner-disabled passkeys).
+    (asserts! (or registered (is-none entry)) ERR_PASSKEY_DISABLED)
+    ;; Unregistered passkeys may send at most FREE_LIMIT NOT.
+    (asserts! (or registered (<= amount FREE_LIMIT)) ERR_AMOUNT_TOO_LARGE)
+    (asserts! (is-eq nonce expected-nonce) ERR_BAD_NONCE)
     ;; rp.id must be configured by the owner
     (asserts! (not (is-eq (var-get rp-id-hash) ZERO_HASH)) ERR_RP_ID_NOT_SET)
     ;; authenticator data: minimum length, user-present flag, matching rp.id
@@ -311,8 +324,13 @@
       )
       ERR_BAD_SIGNATURE
     )
-    ;; consume the nonce before moving funds
-    (map-set passkeys public-key (merge passkey { nonce: (+ nonce u1) }))
+    ;; Record the consumed nonce. A registered passkey keeps its enabled
+    ;; entry; an unregistered one gets an entry that is NOT enabled, so its
+    ;; single free transfer cannot be repeated.
+    (map-set passkeys public-key {
+      nonce: (+ nonce u1),
+      enabled: registered,
+    })
     ;; send NOT from this contract's own balance - Clarity 5 requires
     ;; as-contract? with an explicit allowance for exactly `amount` NOT
     (try! (as-contract?
