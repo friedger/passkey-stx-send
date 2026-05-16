@@ -2,13 +2,18 @@
  * Derive the TypeScript ABI for passkey-not-sender from the contract source.
  *
  * Boots a Clarinet simnet, reads the canonical contract interface, and writes
- * it to src/contracts/passkey-not-sender-abi.ts as an `as const` object so
- * clarity-abitype can infer types from it.
+ * it as an `as const` object so clarity-abitype can infer types from it.
+ *
+ * The ABI is written to two places:
+ *  - src/contracts/        for the frontend
+ *  - supabase/functions/   for the edge function (deployed as a self-contained
+ *                          bundle, so it cannot import across the repo)
  *
  * Run with: npm run gen:abi
  */
 import { initSimnet } from "@stacks/clarinet-sdk";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 const simnet = await initSimnet();
 const interfaces = simnet.getContractsInterfaces();
@@ -29,12 +34,18 @@ if (!abi) {
 const abiOut = JSON.parse(JSON.stringify(abi));
 delete abiOut.clarity_version;
 
-mkdirSync("src/contracts", { recursive: true });
-writeFileSync(
-  "src/contracts/passkey-not-sender-abi.ts",
+const content =
   "// AUTO-GENERATED from contracts/passkey-not-sender.clar - do not edit by hand.\n" +
-    "// Regenerate with: npm run gen:abi\n\n" +
-    `export const passkeyNotSenderAbi = ${JSON.stringify(abiOut, null, 2)} as const;\n`
-);
+  "// Regenerate with: npm run gen:abi\n\n" +
+  `export const passkeyNotSenderAbi = ${JSON.stringify(abiOut, null, 2)} as const;\n`;
 
-console.log("Wrote src/contracts/passkey-not-sender-abi.ts");
+const targets = [
+  "src/contracts/passkey-not-sender-abi.ts",
+  "supabase/functions/submit-not-transfer/passkey-not-sender-abi.ts",
+];
+
+for (const target of targets) {
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, content);
+  console.log(`Wrote ${target}`);
+}

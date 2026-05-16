@@ -1,19 +1,8 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import {
-  makeContractCall,
-  broadcastTransaction,
-  AnchorMode,
-  PostConditionMode,
-  bufferCV,
-  bufferCVFromString,
-  noneCV,
-  someCV,
-  principalCV,
-  uintCV,
-} from "npm:@stacks/transactions@7.2.0";
-import { STACKS_MAINNET } from "npm:@stacks/network@7.2.0";
-import { hexToBytes } from "npm:@stacks/common@7.3.1";
+import { broadcastTransaction } from "npm:@stacks/transactions@7.4.0";
+import { typedMakeContractCall } from "npm:clarity-abitype@0.6.0/stacks-js";
+import { passkeyNotSenderAbi } from "./passkey-not-sender-abi.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,8 +10,17 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Relays a passkey-signed NOT transfer to the `passkey-not-sender` contract.
-// The server only pays the STX fee; all authorization is verified on-chain.
+/** Hex-encode a byte array (0x-prefixed). */
+function toHex(bytes: number[] | Uint8Array): `0x${string}` {
+  return `0x${Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+// Relays a passkey-signed NOT transfer to the passkey-not-sender contract.
+// Argument encoding is driven by the contract ABI via clarity-abitype's
+// `typedMakeContractCall` - no manual ClarityValue wrapping. The server only
+// pays the STX fee; all authorization is verified on-chain.
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -64,40 +62,34 @@ serve(async (req) => {
       );
     }
 
-    // transfer-not(public-key, amount, recipient, memo, nonce,
-    //              authenticator-data, client-data-prefix, client-data-suffix, signature)
-    const functionArgs = [
-      bufferCV(hexToBytes(publicKey)),
-      uintCV(amount),
-      principalCV(recipientAddress),
-      memo ? someCV(bufferCVFromString(memo)) : noneCV(),
-      uintCV(nonce),
-      bufferCV(new Uint8Array(authenticatorData)),
-      bufferCV(new Uint8Array(clientDataPrefix)),
-      bufferCV(new Uint8Array(clientDataSuffix)),
-      bufferCV(new Uint8Array(signature)),
-    ];
-
-    console.log("Building contract call:", {
+    // Typed contract call: functionArgs are plain TypeScript values and the
+    // ABI drives the conversion to ClarityValues. Buffers are hex strings;
+    // the memo text is UTF-8 encoded to match the SIP-018 message the
+    // passkey signed.
+    const transaction = await typedMakeContractCall({
+      abi: passkeyNotSenderAbi,
       contractAddress,
       contractName,
       functionName: "transfer-not",
-    });
-
-    const transaction = await makeContractCall({
-      contractAddress,
-      contractName,
-      functionName: "transfer-not",
-      functionArgs,
+      functionArgs: [
+        publicKey, // (buff 33)  public-key
+        BigInt(amount), // uint        amount
+        recipientAddress, // principal   recipient
+        memo ? toHex(new TextEncoder().encode(memo)) : null, // (optional (buff 34)) memo
+        BigInt(nonce), // uint        nonce
+        toHex(authenticatorData), // (buff 256) authenticator-data
+        toHex(clientDataPrefix), // (buff 128) client-data-prefix
+        toHex(clientDataSuffix), // (buff 512) client-data-suffix
+        toHex(signature), // (buff 64)  signature
+      ],
       senderKey: privateKey,
-      network: STACKS_MAINNET,
-      anchorMode: AnchorMode.Any,
-      postConditionMode: PostConditionMode.Allow,
+      network: "mainnet",
+      postConditionMode: "allow",
     });
 
     const broadcastResponse = await broadcastTransaction({
       transaction,
-      network: STACKS_MAINNET,
+      network: "mainnet",
     });
 
     console.log("Broadcast response:", broadcastResponse);
