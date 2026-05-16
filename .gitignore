@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Clarinet
+.cache
+history.txt
+settings/Mainnet.toml
+settings/Testnet.toml

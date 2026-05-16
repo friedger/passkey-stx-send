@@ -5,14 +5,15 @@ import {
   broadcastTransaction,
   AnchorMode,
   PostConditionMode,
-  uintCV,
+  bufferCV,
   bufferCVFromString,
-  someCV,
   noneCV,
+  someCV,
   principalCV,
+  uintCV,
 } from "npm:@stacks/transactions@7.2.0";
 import { STACKS_MAINNET } from "npm:@stacks/network@7.2.0";
-import { bytesToHex, hexToBytes } from "npm:@stacks/common@7.3.1";
+import { hexToBytes } from "npm:@stacks/common@7.3.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,67 +21,80 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Relays a passkey-signed NOT transfer to the `passkey-not-sender` contract.
+// The server only pays the STX fee; all authorization is verified on-chain.
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { recipientAddress, amount, memo, message, signature } =
-      await req.json();
+    const {
+      publicKey,
+      amount,
+      recipientAddress,
+      memo,
+      nonce,
+      authenticatorData,
+      clientDataPrefix,
+      clientDataSuffix,
+      signature,
+    } = await req.json();
 
     console.log("Received transfer request:", {
-      recipientAddress,
+      publicKey,
       amount,
+      recipientAddress,
       memo,
-      messageHex: bytesToHex(new Uint8Array(message)),
-      signature,
+      nonce,
     });
 
-    // Get environment variables
     const privateKey = Deno.env.get("STX_PRIVATE_KEY");
-    const contractAddress = Deno.env.get("NOT_CONTRACT_ADDRESS");
-    const contractName = Deno.env.get("NOT_CONTRACT_NAME");
-    const functionName = Deno.env.get("NOT_FUNCTION_NAME");
+    const contractAddress = Deno.env.get("PASSKEY_CONTRACT_ADDRESS");
+    const contractName =
+      Deno.env.get("PASSKEY_CONTRACT_NAME") ?? "passkey-not-sender";
 
-    if (!privateKey || !contractAddress || !contractName || !functionName) {
+    if (!privateKey || !contractAddress) {
       console.error("Missing environment variables:", {
         hasPrivateKey: !!privateKey,
         hasContractAddress: !!contractAddress,
-        hasContractName: !!contractName,
-        hasFunctionName: !!functionName,
       });
-      throw new Error("Missing required environment variables");
+      throw new Error(
+        "Missing required environment variables (STX_PRIVATE_KEY, PASSKEY_CONTRACT_ADDRESS)"
+      );
     }
+
+    // transfer-not(public-key, amount, recipient, memo, nonce,
+    //              authenticator-data, client-data-prefix, client-data-suffix, signature)
+    const functionArgs = [
+      bufferCV(hexToBytes(publicKey)),
+      uintCV(amount),
+      principalCV(recipientAddress),
+      memo ? someCV(bufferCVFromString(memo)) : noneCV(),
+      uintCV(nonce),
+      bufferCV(new Uint8Array(authenticatorData)),
+      bufferCV(new Uint8Array(clientDataPrefix)),
+      bufferCV(new Uint8Array(clientDataSuffix)),
+      bufferCV(new Uint8Array(signature)),
+    ];
 
     console.log("Building contract call:", {
       contractAddress,
       contractName,
-      functionName,
+      functionName: "transfer-not",
     });
 
-    // Build the contract call transaction
-    const txOptions = {
+    const transaction = await makeContractCall({
       contractAddress,
       contractName,
-      functionName,
-      functionArgs: [
-        uintCV(amount),
-        principalCV(recipientAddress),
-        memo ? someCV(bufferCVFromString(memo)) : noneCV(),
-        bufferCVFromString(signature),
-      ],
+      functionName: "transfer-not",
+      functionArgs,
       senderKey: privateKey,
       network: STACKS_MAINNET,
       anchorMode: AnchorMode.Any,
       postConditionMode: PostConditionMode.Allow,
-    };
+    });
 
-    const transaction = await makeContractCall(txOptions);
-    console.log("Transaction built successfully");
-
-    // Broadcast the transaction
     const broadcastResponse = await broadcastTransaction({
       transaction,
       network: STACKS_MAINNET,

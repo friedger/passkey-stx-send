@@ -1,0 +1,19 @@
+[project]
+name = 'passkey-stx-send'
+description = 'On-chain WebAuthn (passkey) verification for NOT token transfers'
+authors = []
+telemetry = false
+cache_dir = './.cache'
+
+# passkey-not-sender calls into the mainnet "nope" (NOT) SIP-010 token.
+# Declaring it as a requirement makes `clarinet check` pull and analyse against
+# the real deployed contract. The first run needs network access.
+[[project.requirements]]
+contract_id = 'SP32AEEF6WW5Y0NMJ1S8SBSZDAY8R5J32NBZFPKKZ.nope'
+
+[contracts.passkey-not-sender]
+path = 'contracts/passkey-not-sender.clar'
+# Clarity 5 provides the native `secp256r1-verify` used to check the passkey
+# (P-256) signature on-chain.
+clarity_version = 5
+epoch = "3.4"

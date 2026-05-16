@@ -8,6 +8,8 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { extractPublicKeyFromAuthenticatorData } from "@/lib/not-token-service";
+import { coseToCompressedPublicKey } from "@/lib/webauthn";
 import { bytesToHex } from "@stacks/common";
 import { Fingerprint, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -78,13 +80,41 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
           attestation: "none",
         };
 
+      // Request the PRF extension so the passkey can later derive a Nostr
+      // identity for transfer announcements. Harmless if unsupported.
+      (publicKeyCredentialCreationOptions as { extensions?: unknown }).extensions =
+        { prf: {} };
+
       const credential = (await navigator.credentials.create({
         publicKey: publicKeyCredentialCreationOptions,
       })) as PublicKeyCredential;
 
       if (credential) {
+        const attestationResponse = credential.response as AuthenticatorAttestationResponse;
+        const authenticatorDataBuffer = attestationResponse.getAuthenticatorData();
+        
+        // Extract the COSE public key and store its 33-byte compressed form —
+        // this is what the on-chain contract uses to identify the passkey.
+        const cosePublicKey = extractPublicKeyFromAuthenticatorData(authenticatorDataBuffer);
+        if (!cosePublicKey) {
+          throw new Error("Could not read the passkey public key");
+        }
+        const compressedPublicKey = coseToCompressedPublicKey(cosePublicKey);
+        console.log("Compressed P-256 public key:", bytesToHex(compressedPublicKey));
+
+        // Note whether the PRF extension is available (needed for Nostr)
+        const creationExt = credential.getClientExtensionResults() as {
+          prf?: { enabled?: boolean };
+        };
+        if (!creationExt.prf?.enabled) {
+          console.warn(
+            "Authenticator did not enable PRF - Nostr announcements will be unavailable"
+          );
+        }
+
         // Store credential info locally
         localStorage.setItem("stx-passkey-user", username);
+        localStorage.setItem("stx-passkey-pubkey", bytesToHex(compressedPublicKey));
         // Convert rawId to base64 for storage
         const rawIdArray = new Uint8Array(credential.rawId);
         const base64Id = btoa(String.fromCharCode(...Array.from(rawIdArray)));
@@ -243,6 +273,7 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
             onClick={() => {
               localStorage.removeItem("stx-passkey-user");
               localStorage.removeItem("stx-passkey-id");
+              localStorage.removeItem("stx-passkey-pubkey");
               setHasPasskey(false);
               setUsername("");
               toast.info("Passkey removed");

@@ -9,7 +9,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NotTokenService } from "@/lib/not-token-service";
-import { CheckCircle2, Loader2, User } from "lucide-react";
+import { CheckCircle2, Loader2, Radio, User } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -31,6 +31,39 @@ export const NothingTransfer = ({
   const [txId, setTxId] = useState("");
   const [recipientAddress, setRecipientAddress] = useState("");
   const [network] = useState<"testnet" | "mainnet">("mainnet");
+  const [nostrStatus, setNostrStatus] = useState<
+    "idle" | "waiting" | "posted" | "failed" | "unavailable"
+  >("idle");
+  const [nostrNote, setNostrNote] = useState<{
+    noteUri: string;
+    npub: string;
+  } | null>(null);
+
+  const announceOnNostr = async (
+    announceTxId: string,
+    recipientBnsName: string,
+    transferMemo: string,
+    nostrSecretKey: Uint8Array
+  ) => {
+    setNostrStatus("waiting");
+    try {
+      const result = await NotTokenService.announceOnNostr({
+        txId: announceTxId,
+        recipientBnsName,
+        memo: transferMemo,
+        network,
+        nostrSecretKey,
+      });
+      setNostrNote(result);
+      setNostrStatus("posted");
+      toast.success("Announced on Nostr 🟣");
+    } catch (error) {
+      console.error("Nostr announcement failed:", error);
+      setNostrStatus("failed");
+      const message = error instanceof Error ? error.message : "unknown error";
+      toast.error("Couldn't announce on Nostr: " + message);
+    }
+  };
 
   const handleTransfer = async () => {
     if (!bnsName.trim()) {
@@ -45,6 +78,8 @@ export const NothingTransfer = ({
 
     setIsLoading(true);
     setTxId("");
+    setNostrStatus("idle");
+    setNostrNote(null);
 
     try {
       toast.info("Resolving BNS name...");
@@ -75,6 +110,13 @@ export const NothingTransfer = ({
 
       setTxId(result.txId!);
       toast.success("Nothing sent successfully! 🎉");
+
+      // Announce on Nostr once the transfer confirms on-chain
+      if (result.nostrSecretKey) {
+        void announceOnNostr(result.txId!, bnsName, memo, result.nostrSecretKey);
+      } else {
+        setNostrStatus("unavailable");
+      }
 
       setBnsName("");
       setAmount("");
@@ -206,7 +248,7 @@ export const NothingTransfer = ({
 
       {txId && (
         <Card className="backdrop-blur-sm bg-card/95 border-border/50 shadow-xl border-primary/50">
-          <CardContent className="pt-6">
+          <CardContent className="pt-6 space-y-4">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <CheckCircle2 className="w-5 h-5 text-primary" />
@@ -226,6 +268,67 @@ export const NothingTransfer = ({
                 </a>
               </div>
             </div>
+
+            {nostrStatus !== "idle" && (
+              <div className="flex items-start gap-3 border-t border-border/50 pt-4">
+                <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+                  {nostrStatus === "waiting" ? (
+                    <Loader2 className="w-5 h-5 text-accent animate-spin" />
+                  ) : (
+                    <Radio className="w-5 h-5 text-accent" />
+                  )}
+                </div>
+                <div className="flex-1 space-y-1">
+                  {nostrStatus === "waiting" && (
+                    <>
+                      <p className="font-semibold text-sm">
+                        Announcing on Nostr…
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Waiting for on-chain confirmation, then posting a note.
+                      </p>
+                    </>
+                  )}
+                  {nostrStatus === "posted" && nostrNote && (
+                    <>
+                      <p className="font-semibold text-sm">Announced on Nostr</p>
+                      <p className="text-xs text-muted-foreground break-all">
+                        {nostrNote.npub}
+                      </p>
+                      <a
+                        href={nostrNote.noteUri}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline inline-block mt-2"
+                      >
+                        View note →
+                      </a>
+                    </>
+                  )}
+                  {nostrStatus === "failed" && (
+                    <>
+                      <p className="font-semibold text-sm">
+                        Nostr announcement failed
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        The transfer itself still went through.
+                      </p>
+                    </>
+                  )}
+                  {nostrStatus === "unavailable" && (
+                    <>
+                      <p className="font-semibold text-sm">
+                        Nostr announcement unavailable
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        This passkey has no PRF support, so no Nostr identity
+                        could be derived.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
