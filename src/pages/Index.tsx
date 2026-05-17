@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { PasskeyAuth } from '@/components/PasskeyAuth';
 import { NothingTransfer } from '@/components/NothingTransfer';
 import { NotTokenService } from '@/lib/not-token-service';
@@ -57,8 +58,13 @@ const Index = () => {
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-12 text-sm text-muted-foreground">
+        <div className="text-center mt-12 text-sm text-muted-foreground space-y-1">
           <p>Secured with WebAuthn passkeys • Powered by NOT tokens on Stacks</p>
+          <p>
+            <Link to="/owner" className="hover:text-foreground hover:underline">
+              Contract owner →
+            </Link>
+          </p>
         </div>
       </div>
     </div>
