@@ -239,7 +239,8 @@ export const NotTokenService = {
    * WebAuthn challenge and is recomputed on-chain by the contract.
    */
   async createTransferMessage(params: {
-    recipientAddress: string;
+    bnsName: string;
+    bnsNamespace: string;
     amount: string;
     memo?: string;
     nonce: number;
@@ -248,7 +249,8 @@ export const NotTokenService = {
       tupleCV({
         topic: stringAsciiCV("not-transfer"),
         amount: uintCV(params.amount),
-        recipient: principalCV(params.recipientAddress),
+        name: bufferCVFromString(params.bnsName),
+        namespace: bufferCVFromString(params.bnsNamespace),
         memo: params.memo
           ? someCV(bufferCVFromString(params.memo))
           : noneCV(),
