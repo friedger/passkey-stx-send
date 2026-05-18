@@ -30,7 +30,8 @@ serve(async (req) => {
     const {
       publicKey,
       amount,
-      recipientAddress,
+      bnsName,
+      bnsNamespace,
       memo,
       nonce,
       authenticatorData,
@@ -42,7 +43,8 @@ serve(async (req) => {
     console.log("Received transfer request:", {
       publicKey,
       amount,
-      recipientAddress,
+      bnsName,
+      bnsNamespace,
       memo,
       nonce,
     });
@@ -62,6 +64,15 @@ serve(async (req) => {
       );
     }
 
+    if (!bnsName || !bnsNamespace) {
+      throw new Error("Missing BNS name or namespace");
+    }
+
+    // UTF-8 encode the BNS name + namespace; the contract resolves the
+    // BNS-V2 owner itself, so the browser no longer needs to do it.
+    const nameBytes = new TextEncoder().encode(bnsName);
+    const namespaceBytes = new TextEncoder().encode(bnsNamespace);
+
     // Typed contract call: functionArgs are plain TypeScript values and the
     // ABI drives the conversion to ClarityValues. Buffers are hex strings;
     // the memo text is UTF-8 encoded to match the SIP-018 message the
@@ -74,7 +85,8 @@ serve(async (req) => {
       functionArgs: [
         publicKey, // (buff 33)  public-key
         BigInt(amount), // uint        amount
-        recipientAddress, // principal   recipient
+        toHex(nameBytes), // (buff 48)  name
+        toHex(namespaceBytes), // (buff 20)  namespace
         memo ? toHex(new TextEncoder().encode(memo)) : null, // (optional (buff 34)) memo
         BigInt(nonce), // uint        nonce
         toHex(authenticatorData), // (buff 256) authenticator-data
