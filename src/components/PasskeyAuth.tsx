@@ -23,6 +23,9 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
   const [username, setUsername] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [hasPasskey, setHasPasskey] = useState(false);
+  // True when localStorage holds a partial passkey (e.g. a credential id but
+  // no public key) — the passkey must be created again, not just authenticated.
+  const [needsRecreate, setNeedsRecreate] = useState(false);
 
   const createPasskey = async () => {
     if (!username.trim()) {
@@ -74,7 +77,10 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
             { alg: -257, type: "public-key" }, // RS256
           ],
           authenticatorSelection: {
-            userVerification: "preferred",
+            // "required" so the credential is provisioned for user
+            // verification (biometric / PIN) - the contract enforces the
+            // signed UV flag on every transfer.
+            userVerification: "required",
           },
           timeout: 60000,
           attestation: "none",
@@ -142,10 +148,21 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
     try {
       const storedUsername = localStorage.getItem("stx-passkey-user");
       const storedCredentialId = localStorage.getItem("stx-passkey-id");
+      const storedPublicKey = localStorage.getItem("stx-passkey-pubkey");
 
       if (!storedUsername || !storedCredentialId) {
         toast.error("No passkey found. Please create one first.");
         setHasPasskey(false);
+        return;
+      }
+
+      // The public key is captured only when a passkey is created — an
+      // assertion cannot recover it. Without it a transfer cannot be built,
+      // so send the user back to the create flow.
+      if (!storedPublicKey) {
+        toast.error("Your saved passkey is incomplete. Please create it again.");
+        setHasPasskey(false);
+        setNeedsRecreate(true);
         return;
       }
 
@@ -195,12 +212,23 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
     }
   };
 
-  // Check if user has a passkey on mount
+  // Check for a usable passkey on mount. A usable passkey needs all three
+  // stored values: the username, the credential id, and the compressed public
+  // key. The public key can only be captured at creation time (a WebAuthn
+  // assertion never carries it), so an incomplete state must be re-created
+  // rather than authenticated — otherwise the transfer step fails later.
   useEffect(() => {
     const storedUser = localStorage.getItem("stx-passkey-user");
-    if (storedUser) {
+    const storedId = localStorage.getItem("stx-passkey-id");
+    const storedPubkey = localStorage.getItem("stx-passkey-pubkey");
+    if (storedUser && storedId && storedPubkey) {
       setHasPasskey(true);
       setUsername(storedUser);
+    } else if (storedUser || storedId || storedPubkey) {
+      // Partial passkey — fall back to the create flow.
+      setHasPasskey(false);
+      setNeedsRecreate(true);
+      if (storedUser) setUsername(storedUser);
     }
   }, []);
 
@@ -220,6 +248,14 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {!hasPasskey && needsRecreate && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-muted-foreground">
+            Your saved passkey is incomplete and can't be used to send Nothing.
+            Create it again below — your authenticator may ask you to replace
+            the old one.
+          </div>
+        )}
+
         {!hasPasskey && (
           <div className="space-y-2">
             <Label htmlFor="username">Username</Label>

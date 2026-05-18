@@ -77,6 +77,7 @@
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@stacks/clarinet-sdk": "^3.17.0",
+    "@stacks/rendezvous": "1.0.0-rc.1",
     "@tailwindcss/typography": "^0.5.16",
     "@types/node": "^22.16.5",
     "@types/react": "^18.3.23",

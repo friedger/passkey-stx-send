@@ -5,11 +5,19 @@ authors = []
 telemetry = false
 cache_dir = './.cache'
 
-# passkey-not-sender calls into the mainnet "nope" (NOT) SIP-010 token.
-# Declaring it as a requirement makes `clarinet check` pull and analyse against
-# the real deployed contract. The first run needs network access.
+# passkey-not-sender calls into three mainnet contracts: the "nope" (NOT)
+# SIP-010 token, BNS-V2 to resolve recipient names, and clarity-5-webauthn-v3
+# for the on-chain WebAuthn (P-256) assertion check. Declaring them as requirements
+# makes `clarinet check` pull and analyse against the real deployed contracts.
+# The first run needs network access.
 [[project.requirements]]
 contract_id = 'SP32AEEF6WW5Y0NMJ1S8SBSZDAY8R5J32NBZFPKKZ.nope'
+
+[[project.requirements]]
+contract_id = 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2'
+
+[[project.requirements]]
+contract_id = 'SPV9K21TBFAK4KNRJXF5DFP8N7W46G4V9RCJDC22.clarity-5-webauthn-v3'
 
 [contracts.passkey-not-sender]
 path = 'contracts/passkey-not-sender.clar'

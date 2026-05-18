@@ -2,17 +2,22 @@
 ;; @version 1.0.0
 
 ;; --- errors ---
+;; u100-u112 are this contract's own. The WebAuthn (P-256) assertion check is
+;; delegated to SPV9K21TBFAK4KNRJXF5DFP8N7W46G4V9RCJDC22.clarity-5-webauthn-v3,
+;; which surfaces its own errors: u200 malformed auth data, u201 rp.id
+;; mismatch, u202 user-present flag not set. transfer-not propagates those.
 (define-constant ERR_NOT_OWNER (err u100))
 (define-constant ERR_PASSKEY_NOT_FOUND (err u101))
 (define-constant ERR_PASSKEY_DISABLED (err u102))
 (define-constant ERR_BAD_NONCE (err u103))
 (define-constant ERR_BAD_SIGNATURE (err u104))
-(define-constant ERR_USER_NOT_PRESENT (err u105))
-(define-constant ERR_BAD_RP_ID (err u106))
+(define-constant ERR_USER_NOT_VERIFIED (err u105))
 (define-constant ERR_ALREADY_REGISTERED (err u107))
 (define-constant ERR_RP_ID_NOT_SET (err u108))
-(define-constant ERR_BAD_AUTH_DATA (err u109))
 (define-constant ERR_AMOUNT_TOO_LARGE (err u110))
+(define-constant ERR_NAME_ALREADY_RECEIVED (err u111))
+(define-constant ERR_NAME_UNRESOLVED (err u112))
+(define-constant ERR_RP_ID_HASH_FAILURE (err u113))
 
 ;; An unregistered passkey may send at most this many NOT, exactly once.
 ;; NOT has 0 decimals, so this is 10,000 NOT.
@@ -29,9 +34,6 @@
   name: "send-nothing",
   version: "1.0.0",
 }))))
-
-;; base64url alphabet (RFC 4648 url-safe): A-Z a-z 0-9 - _
-(define-constant B64_ALPHABET 0x4142434445464748494a4b4c4d4e4f505152535455565758595a6162636465666768696a6b6c6d6e6f707172737475767778797a303132333435363738392d5f)
 
 ;; --- state ---
 (define-data-var contract-owner principal tx-sender)
@@ -50,78 +52,25 @@
   }
 )
 
-;; -----------------------------------------------------------------------------
-;; base64url encoding of a 32-byte buffer -> 43 ascii chars (no padding)
-;; -----------------------------------------------------------------------------
-
-(define-read-only (b64-char (sextet uint))
-  (unwrap-panic (element-at? B64_ALPHABET sextet))
-)
-
-(define-read-only (byte-at
-    (b (buff 32))
-    (i uint)
-  )
-  (buff-to-uint-be (unwrap-panic (element-at? b i)))
-)
-
-;; encode 3 bytes -> 4 base64url chars
-(define-read-only (enc3
-    (b0 uint)
-    (b1 uint)
-    (b2 uint)
-  )
-  (concat
-    (concat (b64-char (bit-shift-right b0 u2))
-      (b64-char (bit-or (bit-shift-left (bit-and b0 u3) u4) (bit-shift-right b1 u4)))
-    )
-    (concat
-      (b64-char (bit-or (bit-shift-left (bit-and b1 u15) u2) (bit-shift-right b2 u6)))
-      (b64-char (bit-and b2 u63))
-    ))
-)
-
-;; encode the trailing 2 bytes -> 3 base64url chars
-(define-read-only (enc2
-    (b0 uint)
-    (b1 uint)
-  )
-  (concat
-    (concat (b64-char (bit-shift-right b0 u2))
-      (b64-char (bit-or (bit-shift-left (bit-and b0 u3) u4) (bit-shift-right b1 u4)))
-    )
-    (b64-char (bit-shift-left (bit-and b1 u15) u2))
-  )
-)
-
-(define-read-only (base64url-32 (b (buff 32)))
-  (concat (enc3 (byte-at b u0) (byte-at b u1) (byte-at b u2))
-    (concat (enc3 (byte-at b u3) (byte-at b u4) (byte-at b u5))
-      (concat (enc3 (byte-at b u6) (byte-at b u7) (byte-at b u8))
-        (concat (enc3 (byte-at b u9) (byte-at b u10) (byte-at b u11))
-          (concat (enc3 (byte-at b u12) (byte-at b u13) (byte-at b u14))
-            (concat (enc3 (byte-at b u15) (byte-at b u16) (byte-at b u17))
-              (concat (enc3 (byte-at b u18) (byte-at b u19) (byte-at b u20))
-                (concat (enc3 (byte-at b u21) (byte-at b u22) (byte-at b u23))
-                  (concat (enc3 (byte-at b u24) (byte-at b u25) (byte-at b u26))
-                    (concat
-                      (enc3 (byte-at b u27) (byte-at b u28) (byte-at b u29))
-                      (enc2 (byte-at b u30) (byte-at b u31))
-                    ))
-                ))
-            ))
-        ))
-    ))
+;; BNS names that have already received NOT through this contract. A name may
+;; receive only once - getting another costs a BNS registration / purchase.
+(define-map received-names
+  {
+    name: (buff 48),
+    namespace: (buff 20),
+  }
+  bool
 )
 
 ;; -----------------------------------------------------------------------------
 ;; SIP-018 transfer message hash - the value the passkey signs as its challenge.
-;; Message tuple: { topic: "not-transfer", amount, recipient, memo, nonce }
+;; Message tuple: { topic: "not-transfer", amount, name, namespace, memo, nonce }
 ;; -----------------------------------------------------------------------------
 
 (define-read-only (transfer-message-hash
     (amount uint)
-    (recipient principal)
+    (name (buff 48))
+    (namespace (buff 20))
     (memo (optional (buff 34)))
     (nonce uint)
   )
@@ -130,35 +79,12 @@
       (sha256 (unwrap-panic (to-consensus-buff? {
         amount: amount,
         memo: memo,
+        name: name,
+        namespace: namespace,
         nonce: nonce,
-        recipient: recipient,
         topic: "not-transfer",
       })))
     )))
-)
-
-;; -----------------------------------------------------------------------------
-;; WebAuthn assertion check (pure crypto - read-only so it can be tested off-chain)
-;; -----------------------------------------------------------------------------
-
-(define-read-only (verify-assertion
-    (public-key (buff 33))
-    (challenge (buff 32))
-    (authenticator-data (buff 256))
-    (client-data-prefix (buff 128))
-    (client-data-suffix (buff 512))
-    (signature (buff 64))
-  )
-  (let (
-      ;; rebuild clientDataJSON with the contract-computed challenge in the middle
-      (client-data-hash (sha256 (concat client-data-prefix
-        (concat (base64url-32 challenge) client-data-suffix)
-      )))
-      ;; WebAuthn signs sha256( authenticatorData || sha256(clientDataJSON) )
-      (signed-digest (sha256 (concat authenticator-data client-data-hash)))
-    )
-    (secp256r1-verify signed-digest signature public-key)
-  )
 )
 
 ;; --- read-only helpers ---
@@ -173,20 +99,27 @@
 
 (define-read-only (get-transfer-message-hash
     (amount uint)
-    (recipient principal)
+    (name (buff 48))
+    (namespace (buff 20))
     (memo (optional (buff 34)))
     (nonce uint)
   )
-  (transfer-message-hash amount recipient memo nonce)
+  (transfer-message-hash amount name namespace memo nonce)
 )
 
+;; The challenge as the base64url string the authenticator embeds in
+;; clientDataJSON. base64url encoding is delegated to the clarity-5-webauthn-v3
+;; library so this contract carries no crypto-encoding code of its own.
 (define-read-only (get-challenge-base64
     (amount uint)
-    (recipient principal)
+    (name (buff 48))
+    (namespace (buff 20))
     (memo (optional (buff 34)))
     (nonce uint)
   )
-  (base64url-32 (transfer-message-hash amount recipient memo nonce))
+  (contract-call? 'SPV9K21TBFAK4KNRJXF5DFP8N7W46G4V9RCJDC22.clarity-5-webauthn-v3
+    base64url-32 (transfer-message-hash amount name namespace memo nonce)
+  )
 )
 
 (define-read-only (get-owner)
@@ -197,13 +130,37 @@
   (var-get rp-id-hash)
 )
 
+;; Whether a BNS name has already received NOT through this contract.
+;; The UI should check this before building a transfer.
+(define-read-only (name-has-received
+    (name (buff 48))
+    (namespace (buff 20))
+  )
+  (default-to false
+    (map-get? received-names {
+      name: name,
+      namespace: namespace,
+    })
+  )
+)
+
 ;; -----------------------------------------------------------------------------
 ;; owner administration
 ;; -----------------------------------------------------------------------------
 
-(define-public (register-passkey (public-key (buff 33)))
+(define-fungible-token anti-phishing)
+(define-private (is-contract-owner)
   (begin
     (asserts! (is-eq tx-sender (var-get contract-owner)) ERR_NOT_OWNER)
+    (try! (ft-mint? anti-phishing u1 tx-sender))
+    (try! (ft-burn? anti-phishing u1 tx-sender))
+    (ok true)
+  )
+)
+
+(define-public (register-passkey (public-key (buff 33)))
+  (begin
+    (try! (is-contract-owner))
     (asserts! (is-none (map-get? passkeys public-key)) ERR_ALREADY_REGISTERED)
     (map-set passkeys public-key {
       nonce: u0,
@@ -222,7 +179,7 @@
     (enabled bool)
   )
   (let ((passkey (unwrap! (map-get? passkeys public-key) ERR_PASSKEY_NOT_FOUND)))
-    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR_NOT_OWNER)
+    (try! (is-contract-owner))
     (map-set passkeys public-key (merge passkey { enabled: enabled }))
     (print {
       notification: "passkey-enabled",
@@ -235,17 +192,19 @@
   )
 )
 
-(define-public (set-rp-id-hash (hash (buff 32)))
-  (begin
-    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR_NOT_OWNER)
-    (var-set rp-id-hash hash)
-    (ok true)
+(define-public (set-rp-id-hash (rp-id (string-ascii 250)))
+  (let ((rpidhash (unwrap-panic (to-consensus-buff? rp-id))))
+    (try! (is-contract-owner))
+    (var-set rp-id-hash
+      (sha256 (unwrap! (slice? rpidhash u5 (len rpidhash)) ERR_RP_ID_HASH_FAILURE))
+    )
+    (ok (var-get rp-id-hash))
   )
 )
 
 (define-public (set-owner (new-owner principal))
   (begin
-    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR_NOT_OWNER)
+    (try! (is-contract-owner))
     (var-set contract-owner new-owner)
     (ok true)
   )
@@ -257,7 +216,7 @@
     (recipient principal)
   )
   (begin
-    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR_NOT_OWNER)
+    (try! (is-contract-owner))
     (as-contract?
       ((with-ft 'SP32AEEF6WW5Y0NMJ1S8SBSZDAY8R5J32NBZFPKKZ.nope "NOT" amount))
       (try! (contract-call? 'SP32AEEF6WW5Y0NMJ1S8SBSZDAY8R5J32NBZFPKKZ.nope transfer
@@ -274,7 +233,8 @@
 (define-public (transfer-not
     (public-key (buff 33))
     (amount uint)
-    (recipient principal)
+    (name (buff 48))
+    (namespace (buff 20))
     (memo (optional (buff 34)))
     (nonce uint)
     (authenticator-data (buff 256))
@@ -286,9 +246,13 @@
       (entry (map-get? passkeys public-key))
       ;; "registered" = an entry the owner added and left enabled; such a
       ;; passkey may transfer repeatedly with no amount cap.
-      (registered (match entry e (get enabled e) false))
-      (expected-nonce (match entry e (get nonce e) u0))
-      (challenge (transfer-message-hash amount recipient memo nonce))
+      (registered (default-to false (get enabled entry)))
+      (expected-nonce (default-to u0 (get nonce entry)))
+      ;; the BNS name key, built once - used for the check and the record
+      (name-key {
+        name: name,
+        namespace: namespace,
+      })
     )
     ;; An unregistered passkey gets ONE free transfer: with no entry yet it
     ;; is allowed; afterwards it has an entry that is not enabled, which is
@@ -297,58 +261,138 @@
     ;; Unregistered passkeys may send at most FREE_LIMIT NOT.
     (asserts! (or registered (<= amount FREE_LIMIT)) ERR_AMOUNT_TOO_LARGE)
     (asserts! (is-eq nonce expected-nonce) ERR_BAD_NONCE)
+    ;; Each BNS name may receive NOT through this contract only once.
+    (asserts! (is-none (map-get? received-names name-key))
+      ERR_NAME_ALREADY_RECEIVED
+    )
     ;; rp.id must be configured by the owner
     (asserts! (not (is-eq (var-get rp-id-hash) ZERO_HASH)) ERR_RP_ID_NOT_SET)
-    ;; authenticator data: minimum length, user-present flag, matching rp.id
-    (asserts! (>= (len authenticator-data) u37) ERR_BAD_AUTH_DATA)
+    ;; Verify the passkey assertion via the deployed clarity-5-webauthn-v3
+    ;; library. It checks the authenticator data length, the rp.id hash, the
+    ;; user-present flag, and the P-256 signature over
+    ;; sha256(authData || sha256(clientDataJSON)). It returns (ok true) for a
+    ;; valid signature, (ok false) for a bad one, and (err u200/u201/u202) for
+    ;; malformed auth data / rp.id / user-present. The SIP-018 challenge is
+    ;; computed here, after the cheap checks above, so a failed transfer does
+    ;; not pay to hash it.
     (asserts!
-      (is-eq
-        (bit-and
-          (buff-to-uint-be (unwrap! (element-at? authenticator-data u32) ERR_BAD_AUTH_DATA))
-          u1
-        )
-        u1
-      )
-      ERR_USER_NOT_PRESENT
-    )
-    (asserts!
-      (is-eq (unwrap! (slice? authenticator-data u0 u32) ERR_BAD_AUTH_DATA)
-        (var-get rp-id-hash)
-      )
-      ERR_BAD_RP_ID
-    )
-    ;; the passkey signature must verify against the reconstructed challenge
-    (asserts!
-      (verify-assertion public-key challenge authenticator-data
-        client-data-prefix client-data-suffix signature
-      )
+      (try! (contract-call?
+        'SPV9K21TBFAK4KNRJXF5DFP8N7W46G4V9RCJDC22.clarity-5-webauthn-v3
+        verify-assertion public-key
+        (transfer-message-hash amount name namespace memo nonce)
+        (var-get rp-id-hash) authenticator-data client-data-prefix
+        client-data-suffix signature
+      ))
       ERR_BAD_SIGNATURE
     )
-    ;; Record the consumed nonce. A registered passkey keeps its enabled
-    ;; entry; an unregistered one gets an entry that is NOT enabled, so its
-    ;; single free transfer cannot be repeated.
-    (map-set passkeys public-key {
-      nonce: (+ nonce u1),
-      enabled: registered,
-    })
-    ;; send NOT from this contract's own balance - Clarity 5 requires
-    ;; as-contract? with an explicit allowance for exactly `amount` NOT
-    (try! (as-contract?
-      ((with-ft 'SP32AEEF6WW5Y0NMJ1S8SBSZDAY8R5J32NBZFPKKZ.nope "NOT" amount))
-      (try! (contract-call? 'SP32AEEF6WW5Y0NMJ1S8SBSZDAY8R5J32NBZFPKKZ.nope transfer
-        amount tx-sender recipient memo
+    ;; clarity-5-webauthn-v3.verify-assertion enforces only User Present (UP).
+    ;; This app signs with userVerification:"required", so also require the
+    ;; signed User Verified (UV) flag on-chain, where it cannot be forged. v3
+    ;; exposes is-user-verified for exactly this - it returns false when the UV
+    ;; flag is clear or the authenticator data carries no flags byte.
+    (asserts!
+      (contract-call?
+        'SPV9K21TBFAK4KNRJXF5DFP8N7W46G4V9RCJDC22.clarity-5-webauthn-v3
+        is-user-verified authenticator-data
+      )
+      ERR_USER_NOT_VERIFIED
+    )
+    ;; Resolve the BNS name to its current owner. Done only after the
+    ;; signature verifies, so failed transfers don't pay for the lookup.
+    (let ((recipient (unwrap!
+        (unwrap!
+          (contract-call? 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2
+            get-owner-name name namespace
+          )
+          ERR_NAME_UNRESOLVED
+        )
+        ERR_NAME_UNRESOLVED
+      )))
+      ;; Record state before moving funds: consume the nonce (a registered
+      ;; passkey keeps its enabled entry; an unregistered one gets a disabled
+      ;; entry, so its single free transfer cannot be repeated), and mark the
+      ;; BNS name as having received.
+      (map-set passkeys public-key {
+        nonce: (+ nonce u1),
+        enabled: registered,
+      })
+      (map-set received-names name-key true)
+      ;; send NOT from this contract's own balance - Clarity 5 requires
+      ;; as-contract? with an explicit allowance for exactly `amount` NOT
+      (try! (as-contract?
+        ((with-ft 'SP32AEEF6WW5Y0NMJ1S8SBSZDAY8R5J32NBZFPKKZ.nope "NOT" amount))
+        (try! (contract-call? 'SP32AEEF6WW5Y0NMJ1S8SBSZDAY8R5J32NBZFPKKZ.nope transfer
+          amount tx-sender recipient memo
+        ))
       ))
-    ))
-    (print {
-      notification: "not-sent",
-      payload: {
-        publicKey: public-key,
-        recipient: recipient,
-        amount: amount,
-        memo: memo,
-        nonce: nonce,
-      },
-    })
-    (ok true)
+      (print {
+        notification: "not-sent",
+        payload: {
+          publicKey: public-key,
+          name: name,
+          namespace: namespace,
+          recipient: recipient,
+          amount: amount,
+          memo: memo,
+          nonce: nonce,
+        },
+      })
+      (ok true)
+    )
+  )
+)
+
+;; #[env(simnet)]
+;; Tracks the number of times each SUT function has been called successfully.
+;; Rendezvous calls update-context after every successful public-function call.
+(define-map context
+  (string-ascii 100)
+  { called: uint }
+)
+;; #[env(simnet)]
+(define-public (update-context
+    (function-name (string-ascii 100))
+    (called uint)
+  )
+  (ok (map-set context function-name { called: called }))
+)
+
+;; #[env(simnet)]
+;; rp-id-hash must be either the ZERO_HASH sentinel (empty buffer, meaning
+;; "not yet set") or a proper 32-byte SHA-256 digest. Any intermediate length
+;; would silently cause every authenticator assertion to fail the rp.id check.
+(define-read-only (invariant-rp-id-well-formed)
+  (let ((h (var-get rp-id-hash)))
+    (or (is-eq h ZERO_HASH) (is-eq (len h) u32))
+  )
+)
+
+;; #[env(simnet)]
+;; Before set-rp-id-hash is ever called successfully, rp-id-hash must remain
+;; ZERO_HASH. A violation would mean rp-id-hash was mutated by some path other
+;; than set-rp-id-hash.
+(define-read-only (invariant-rp-id-defaults-to-zero)
+  (let ((set-rp-id-calls (default-to u0 (get called (map-get? context "set-rp-id-hash")))))
+    (if (is-eq set-rp-id-calls u0)
+      (is-eq (var-get rp-id-hash) ZERO_HASH)
+      true
+    )
+  )
+)
+
+;; #[env(simnet)]
+;; A successful transfer-not requires rp-id-hash != ZERO_HASH (ERR_RP_ID_NOT_SET
+;; guard), which can only be satisfied after set-rp-id-hash has been called.
+;; If any transfer-not has succeeded, at least one set-rp-id-hash call must
+;; also have succeeded. A violation would mean the rp.id gate was bypassed.
+(define-read-only (invariant-transfer-requires-rp-id)
+  (let (
+      (transfer-calls (default-to u0 (get called (map-get? context "transfer-not"))))
+      (set-rp-id-calls (default-to u0 (get called (map-get? context "set-rp-id-hash"))))
+    )
+    (if (> transfer-calls u0)
+      (> set-rp-id-calls u0)
+      true
+    )
   )
 )

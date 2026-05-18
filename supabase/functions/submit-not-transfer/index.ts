@@ -30,7 +30,8 @@ serve(async (req) => {
     const {
       publicKey,
       amount,
-      recipientAddress,
+      name,
+      namespace,
       memo,
       nonce,
       authenticatorData,
@@ -42,7 +43,8 @@ serve(async (req) => {
     console.log("Received transfer request:", {
       publicKey,
       amount,
-      recipientAddress,
+      name,
+      namespace,
       memo,
       nonce,
     });
@@ -74,7 +76,8 @@ serve(async (req) => {
       functionArgs: [
         publicKey, // (buff 33)  public-key
         BigInt(amount), // uint        amount
-        recipientAddress, // principal   recipient
+        toHex(new TextEncoder().encode(name)), // (buff 48)  BNS name
+        toHex(new TextEncoder().encode(namespace)), // (buff 20)  BNS namespace
         memo ? toHex(new TextEncoder().encode(memo)) : null, // (optional (buff 34)) memo
         BigInt(nonce), // uint        nonce
         toHex(authenticatorData), // (buff 256) authenticator-data

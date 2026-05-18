@@ -8,7 +8,6 @@ import {
   noneCV,
   OptionalCV,
   PrincipalCV,
-  principalCV,
   ResponseOkCV,
   someCV,
   stringAsciiCV,
@@ -118,7 +117,8 @@ export interface PasskeyState {
 async function submitTransferToBackend(body: {
   publicKey: string;
   amount: string;
-  recipientAddress: string;
+  name: string;
+  namespace: string;
   memo: string | undefined;
   nonce: number;
   authenticatorData: Uint8Array;
@@ -130,7 +130,8 @@ async function submitTransferToBackend(body: {
     body: {
       publicKey: body.publicKey,
       amount: body.amount,
-      recipientAddress: body.recipientAddress,
+      name: body.name,
+      namespace: body.namespace,
       memo: body.memo,
       nonce: body.nonce,
       authenticatorData: Array.from(body.authenticatorData),
@@ -222,11 +223,37 @@ export const NotTokenService = {
   },
 
   /**
+   * Whether a BNS name has already received NOT through the contract.
+   * Each name may receive only once.
+   */
+  async nameHasReceived(
+    name: string,
+    namespace: string,
+    network: Network = "mainnet"
+  ): Promise<boolean> {
+    if (!PASSKEY_SENDER_CONTRACT.address) {
+      throw new Error(
+        "Passkey sender contract not configured — set VITE_PASSKEY_SENDER_ADDRESS"
+      );
+    }
+    const result = await fetchCallReadOnlyFunction({
+      contractAddress: PASSKEY_SENDER_CONTRACT.address,
+      contractName: PASSKEY_SENDER_CONTRACT.name,
+      functionName: "name-has-received",
+      functionArgs: [bufferCVFromString(name), bufferCVFromString(namespace)],
+      senderAddress: PASSKEY_SENDER_CONTRACT.address,
+      network: networkOf(network),
+    });
+    return cvToValue(result) === true;
+  },
+
+  /**
    * Create the SIP-018 transfer message. Its hash is used directly as the
    * WebAuthn challenge and is recomputed on-chain by the contract.
    */
   async createTransferMessage(params: {
-    recipientAddress: string;
+    name: string;
+    namespace: string;
     amount: string;
     memo?: string;
     nonce: number;
@@ -235,7 +262,8 @@ export const NotTokenService = {
       tupleCV({
         topic: stringAsciiCV("not-transfer"),
         amount: uintCV(params.amount),
-        recipient: principalCV(params.recipientAddress),
+        name: bufferCVFromString(params.name),
+        namespace: bufferCVFromString(params.namespace),
         memo: params.memo
           ? someCV(bufferCVFromString(params.memo))
           : noneCV(),
@@ -338,7 +366,14 @@ export const NotTokenService = {
         };
       }
 
-      // Step 1: Resolve BNS name
+      // Step 1: Split and resolve the BNS name. Resolution here is for
+      // display; the contract resolves the name again on-chain.
+      const parts = recipientBnsName.trim().toLowerCase().split(".");
+      if (parts.length !== 2 || !parts[0] || !parts[1]) {
+        return { success: false, error: "Enter a BNS name like name.btc" };
+      }
+      const [bnsName, bnsNamespace] = parts;
+
       const recipientAddress = await this.resolveBnsName(
         recipientBnsName,
         network
@@ -347,7 +382,15 @@ export const NotTokenService = {
         return { success: false, error: "Could not resolve BNS name" };
       }
 
-      // Step 2: Read the passkey's on-chain state. Any passkey gets one
+      // Step 2: Each BNS name may receive NOT only once.
+      if (await this.nameHasReceived(bnsName, bnsNamespace, network)) {
+        return {
+          success: false,
+          error: `${recipientBnsName} has already received NOT through this contract.`,
+        };
+      }
+
+      // Step 3: Read the passkey's on-chain state. Any passkey gets one
       // free transfer (up to 10k NOT); a registered + enabled passkey can
       // transfer repeatedly. Only a used or disabled passkey is blocked.
       const state = await this.getPasskeyState(publicKey, network);
@@ -359,15 +402,16 @@ export const NotTokenService = {
         };
       }
 
-      // Step 3: Build the SIP-018 transfer message (the WebAuthn challenge)
+      // Step 4: Build the SIP-018 transfer message (the WebAuthn challenge)
       const message = await this.createTransferMessage({
-        recipientAddress,
+        name: bnsName,
+        namespace: bnsNamespace,
         amount,
         memo,
         nonce: state.nonce,
       });
 
-      // Step 4: Sign with the passkey (also yields the PRF output)
+      // Step 5: Sign with the passkey (also yields the PRF output)
       const { signature, authenticatorData, clientDataJSON, prfOutput } =
         await this.signWithPasskey(message, credentialId);
 
@@ -381,14 +425,15 @@ export const NotTokenService = {
         }
       }
 
-      // Step 5: Split clientDataJSON around the base64url challenge
+      // Step 6: Split clientDataJSON around the base64url challenge
       const { prefix, suffix } = splitClientData(clientDataJSON, message);
 
-      // Step 6: Relay to the contract via the backend
+      // Step 7: Relay to the contract via the backend
       const { txId } = await submitTransferToBackend({
         publicKey,
         amount,
-        recipientAddress,
+        name: bnsName,
+        namespace: bnsNamespace,
         memo,
         nonce: state.nonce,
         authenticatorData,

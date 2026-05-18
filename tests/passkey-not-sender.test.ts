@@ -17,6 +17,11 @@ declare global {
 const CONTRACT = "passkey-not-sender";
 const abi = passkeyNotSenderAbi;
 
+// A BNS recipient name (name.namespace) as 0x-hex buffers. A fresh simnet
+// has no registered BNS names, so on-chain resolution of this returns none.
+const NAME = bytesToHex(new TextEncoder().encode("lucky"));
+const NAMESPACE = bytesToHex(new TextEncoder().encode("btc"));
+
 function bytesToHex(bytes: Uint8Array): `0x${string}` {
   return `0x${Buffer.from(bytes).toString("hex")}`;
 }
@@ -167,7 +172,8 @@ describe("passkey-not-sender", () => {
         functionArgs: [
           `0x02${"cc".repeat(32)}`, // unregistered public-key
           10001n, // amount - over the 10,000 NOT free limit
-          deployer, // recipient
+          NAME, // BNS name
+          NAMESPACE, // BNS namespace
           null, // memo
           0n, // nonce
           `0x${"00".repeat(37)}`, // authenticator-data
@@ -180,7 +186,7 @@ describe("passkey-not-sender", () => {
       expect(result).toEqual({ error: 110n });
     });
 
-    it("happy path: registers a passkey and transfers with a valid signature", () => {
+    it("happy path: a valid passkey signature transfers NOT to the BNS owner", () => {
       const rpId = new TextEncoder().encode("example.com");
       const rpIdHash = sha256(rpId);
 
@@ -189,10 +195,12 @@ describe("passkey-not-sender", () => {
         abi,
         contract: CONTRACT,
         functionName: "set-rp-id-hash",
-        functionArgs: [bytesToHex(rpIdHash)],
+        functionArgs: ["example.com"],
         sender: deployer,
       });
-      expect(setRp.result).toEqual({ ok: true });
+      // set-rp-id-hash takes the rp.id domain string and returns the stored
+      // sha256 of it.
+      expect(setRp.result).toEqual({ ok: bytesToHex(rpIdHash) });
 
       const { privateKey, publicKey } = generateKeyPairSync("ec", {
         namedCurve: "prime256v1",
@@ -218,23 +226,33 @@ describe("passkey-not-sender", () => {
       });
       expect(register.result).toEqual({ ok: true });
 
-      // Fund the contract with NOT. A fresh simnet mints no NOT, so:
-      //  1. mint micro-nthng (the token NOT wraps) to a wallet via its
-      //     private `mint!`;
-      //  2. wrap-nthng turns micro-nthng into NOT, but only for a caller
-      //     whose `contract-caller` is the .napper contract - and clarinet-sdk
-      //     rejects a contract principal as a tx sender. So deploy a minimal
-      //     stub at that exact principal and wrap through it;
-      //  3. transfer the resulting NOT to the passkey-not-sender contract.
+      // Register the recipient BNS name (lucky.btc -> wallet1) directly via
+      // BNS-V2's private `register-new-name`. A fresh simnet has no names and
+      // a real registration needs a launched namespace; register-new-name
+      // skips all that. It burns STX from BNS-V2, so seed the contract first.
+      const BNS = "SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2";
+      simnet.transferSTX(1000000n, BNS, simnet.deployer);
+      simnet.callPrivateFn(
+        BNS,
+        "register-new-name",
+        [
+          Cl.uint(1), // id-to-be-minted
+          Cl.bufferFromHex("00".repeat(20)), // hashed-salted-fqn
+          Cl.uint(1), // stx-burned
+          Cl.bufferFromUtf8("lucky"), // name
+          Cl.bufferFromUtf8("btc"), // namespace
+          Cl.uint(0), // lifetime - no expiry
+        ],
+        wallet1 // contract-caller - the name is minted to wallet1
+      );
+
+      // Fund the passkey-not-sender contract with NOT: mint micro-nthng, wrap
+      // it through a .napper stub (wrap-nthng gates on contract-caller), then
+      // transfer the resulting NOT to the contract.
       const NOPE = "SP32AEEF6WW5Y0NMJ1S8SBSZDAY8R5J32NBZFPKKZ.nope";
       const MICRO_NTHNG = "SP32AEEF6WW5Y0NMJ1S8SBSZDAY8R5J32NBZFPKKZ.micro-nthng";
       const NOPE_DEPLOYER = "SP32AEEF6WW5Y0NMJ1S8SBSZDAY8R5J32NBZFPKKZ";
-      const contractPrincipal = `${simnet.deployer}.${CONTRACT}`;
       const funded = 1000n;
-
-      // .napper stub: forwards to nope.wrap-nthng so wrap-nthng sees
-      // `contract-caller` == .napper. Deployed by the nope deployer so its
-      // principal is exactly SP32AEEF....napper.
       simnet.deployContract(
         "napper",
         "(define-public (boot-wrap (amount uint))\n" +
@@ -242,50 +260,50 @@ describe("passkey-not-sender", () => {
         null,
         NOPE_DEPLOYER
       );
-
       simnet.callPrivateFn(
         MICRO_NTHNG,
         "mint!",
         [Cl.principal(simnet.deployer), Cl.uint(funded)],
         simnet.deployer
       );
-      const wrapped = simnet.callPublicFn(
-        `${NOPE_DEPLOYER}.napper`,
-        "boot-wrap",
-        [Cl.uint(funded)],
-        simnet.deployer
-      );
-      expect(wrapped.result).toStrictEqual(Cl.ok(Cl.bool(true)));
-      const funding = simnet.callPublicFn(
-        NOPE,
-        "transfer",
-        [
-          Cl.uint(funded),
-          Cl.principal(simnet.deployer),
-          Cl.principal(contractPrincipal),
-          Cl.none(),
-        ],
-        simnet.deployer
-      );
-      expect(funding.result).toStrictEqual(Cl.ok(Cl.bool(true)));
+      expect(
+        simnet.callPublicFn(
+          `${NOPE_DEPLOYER}.napper`,
+          "boot-wrap",
+          [Cl.uint(funded)],
+          simnet.deployer
+        ).result
+      ).toStrictEqual(Cl.ok(Cl.bool(true)));
+      expect(
+        simnet.callPublicFn(
+          NOPE,
+          "transfer",
+          [
+            Cl.uint(funded),
+            Cl.principal(simnet.deployer),
+            Cl.principal(`${simnet.deployer}.${CONTRACT}`),
+            Cl.none(),
+          ],
+          simnet.deployer
+        ).result
+      ).toStrictEqual(Cl.ok(Cl.bool(true)));
 
       const amount = 1n;
       const nonce = 0n;
-      const recipient = wallet1;
 
       const challenge = typedCallReadOnlyFn({
         simnet,
         abi,
         contract: CONTRACT,
         functionName: "get-transfer-message-hash",
-        functionArgs: [amount, recipient, null, nonce],
+        functionArgs: [amount, NAME, NAMESPACE, null, nonce],
         sender: deployer,
       });
       const challengeBytes = hexToBytes(challenge.result);
 
       const authenticatorData = new Uint8Array(37);
       authenticatorData.set(rpIdHash, 0);
-      authenticatorData[32] = 0x01; // user present
+      authenticatorData[32] = 0x05; // user present (UP) + user verified (UV)
 
       const prefixStr = '{"type":"webauthn.get","challenge":"';
       const suffixStr = '","origin":"https://example.com"}';
@@ -307,7 +325,8 @@ describe("passkey-not-sender", () => {
         functionArgs: [
           publicKeyHex,
           amount,
-          recipient,
+          NAME,
+          NAMESPACE,
           null,
           nonce,
           bytesToHex(authenticatorData),
@@ -319,6 +338,7 @@ describe("passkey-not-sender", () => {
       });
       expect(transfer.result).toEqual({ ok: true });
 
+      // the passkey nonce advanced, and the BNS name is now marked as used
       const stored = typedCallReadOnlyFn({
         simnet,
         abi,
@@ -328,6 +348,103 @@ describe("passkey-not-sender", () => {
         sender: deployer,
       });
       expect(stored.result).toEqual({ nonce: 1n, enabled: true });
+
+      const received = typedCallReadOnlyFn({
+        simnet,
+        abi,
+        contract: CONTRACT,
+        functionName: "name-has-received",
+        functionArgs: [NAME, NAMESPACE],
+        sender: deployer,
+      });
+      expect(received.result).toBe(true);
+    });
+
+    it("rejects a transfer whose assertion is not user-verified (ERR_USER_NOT_VERIFIED)", () => {
+      const rpIdHash = sha256(new TextEncoder().encode("example.com"));
+      typedCallPublicFn({
+        simnet,
+        abi,
+        contract: CONTRACT,
+        functionName: "set-rp-id-hash",
+        functionArgs: ["example.com"],
+        sender: deployer,
+      });
+
+      const { privateKey, publicKey } = generateKeyPairSync("ec", {
+        namedCurve: "prime256v1",
+      });
+      const jwk = publicKey.export({ format: "jwk" });
+      if (!jwk.x || !jwk.y) {
+        throw new Error("Expected P-256 public key coordinates");
+      }
+      const x = base64urlDecode(jwk.x);
+      const y = base64urlDecode(jwk.y);
+      const compressed = new Uint8Array(33);
+      compressed[0] = (y[31] & 1) === 0 ? 0x02 : 0x03;
+      compressed.set(x, 1);
+      const publicKeyHex = bytesToHex(compressed);
+
+      typedCallPublicFn({
+        simnet,
+        abi,
+        contract: CONTRACT,
+        functionName: "register-passkey",
+        functionArgs: [publicKeyHex],
+        sender: deployer,
+      });
+
+      const amount = 1n;
+      const nonce = 0n;
+      const challenge = typedCallReadOnlyFn({
+        simnet,
+        abi,
+        contract: CONTRACT,
+        functionName: "get-transfer-message-hash",
+        functionArgs: [amount, NAME, NAMESPACE, null, nonce],
+        sender: deployer,
+      });
+      const challengeBytes = hexToBytes(challenge.result);
+
+      // authenticator data with User Present set but User Verified (bit 2) NOT
+      const authenticatorData = new Uint8Array(37);
+      authenticatorData.set(rpIdHash, 0);
+      authenticatorData[32] = 0x01; // UP only - no UV
+
+      const prefixStr = '{"type":"webauthn.get","challenge":"';
+      const suffixStr = '","origin":"https://example.com"}';
+      const clientDataJson = `${prefixStr}${base64urlEncode(challengeBytes)}${suffixStr}`;
+      const clientDataHash = sha256(new TextEncoder().encode(clientDataJson));
+      const signedMessage = new Uint8Array(
+        authenticatorData.length + clientDataHash.length
+      );
+      signedMessage.set(authenticatorData, 0);
+      signedMessage.set(clientDataHash, authenticatorData.length);
+      const derSig = sign("sha256", Buffer.from(signedMessage), privateKey);
+      const signature = derToRawSignature(new Uint8Array(derSig));
+
+      // The signature is valid and the user is present, but not verified -
+      // the contract must reject with ERR_USER_NOT_VERIFIED (u105).
+      const { result } = typedCallPublicFn({
+        simnet,
+        abi,
+        contract: CONTRACT,
+        functionName: "transfer-not",
+        functionArgs: [
+          publicKeyHex,
+          amount,
+          NAME,
+          NAMESPACE,
+          null,
+          nonce,
+          bytesToHex(authenticatorData),
+          bytesToHex(new TextEncoder().encode(prefixStr)),
+          bytesToHex(new TextEncoder().encode(suffixStr)),
+          bytesToHex(signature),
+        ],
+        sender: deployer,
+      });
+      expect(result).toEqual({ error: 105n });
     });
   });
 
@@ -338,7 +455,7 @@ describe("passkey-not-sender", () => {
         abi,
         contract: CONTRACT,
         functionName: "get-challenge-base64",
-        functionArgs: [5n, deployer, null, 0n],
+        functionArgs: [5n, NAME, NAMESPACE, null, 0n],
         sender: deployer,
       });
       // a (buff 43) comes back as a 0x-prefixed hex string of 86 hex chars
@@ -346,7 +463,7 @@ describe("passkey-not-sender", () => {
     });
 
     it("get-transfer-message-hash is a deterministic 32-byte hash", () => {
-      const args = [7n, deployer, null, 3n] as const;
+      const args = [7n, NAME, NAMESPACE, null, 3n] as const;
       const first = typedCallReadOnlyFn({
         simnet,
         abi,

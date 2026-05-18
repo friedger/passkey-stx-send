@@ -4,6 +4,19 @@
 export const passkeyNotSenderAbi = {
   "functions": [
     {
+      "name": "is-contract-owner",
+      "access": "private",
+      "args": [],
+      "outputs": {
+        "type": {
+          "response": {
+            "ok": "bool",
+            "error": "uint128"
+          }
+        }
+      }
+    },
+    {
       "name": "register-passkey",
       "access": "public",
       "args": [
@@ -74,10 +87,10 @@ export const passkeyNotSenderAbi = {
       "access": "public",
       "args": [
         {
-          "name": "hash",
+          "name": "rp-id",
           "type": {
-            "buffer": {
-              "length": 32
+            "string-ascii": {
+              "length": 250
             }
           }
         }
@@ -85,7 +98,11 @@ export const passkeyNotSenderAbi = {
       "outputs": {
         "type": {
           "response": {
-            "ok": "bool",
+            "ok": {
+              "buffer": {
+                "length": 32
+              }
+            },
             "error": "uint128"
           }
         }
@@ -108,8 +125,20 @@ export const passkeyNotSenderAbi = {
           "type": "uint128"
         },
         {
-          "name": "recipient",
-          "type": "principal"
+          "name": "name",
+          "type": {
+            "buffer": {
+              "length": 48
+            }
+          }
+        },
+        {
+          "name": "namespace",
+          "type": {
+            "buffer": {
+              "length": 20
+            }
+          }
         },
         {
           "name": "memo",
@@ -168,6 +197,32 @@ export const passkeyNotSenderAbi = {
       }
     },
     {
+      "name": "update-context",
+      "access": "public",
+      "args": [
+        {
+          "name": "function-name",
+          "type": {
+            "string-ascii": {
+              "length": 100
+            }
+          }
+        },
+        {
+          "name": "called",
+          "type": "uint128"
+        }
+      ],
+      "outputs": {
+        "type": {
+          "response": {
+            "ok": "bool",
+            "error": "none"
+          }
+        }
+      }
+    },
+    {
       "name": "withdraw-not",
       "access": "public",
       "args": [
@@ -190,111 +245,6 @@ export const passkeyNotSenderAbi = {
       }
     },
     {
-      "name": "b64-char",
-      "access": "read_only",
-      "args": [
-        {
-          "name": "sextet",
-          "type": "uint128"
-        }
-      ],
-      "outputs": {
-        "type": {
-          "buffer": {
-            "length": 1
-          }
-        }
-      }
-    },
-    {
-      "name": "base64url-32",
-      "access": "read_only",
-      "args": [
-        {
-          "name": "b",
-          "type": {
-            "buffer": {
-              "length": 32
-            }
-          }
-        }
-      ],
-      "outputs": {
-        "type": {
-          "buffer": {
-            "length": 43
-          }
-        }
-      }
-    },
-    {
-      "name": "byte-at",
-      "access": "read_only",
-      "args": [
-        {
-          "name": "b",
-          "type": {
-            "buffer": {
-              "length": 32
-            }
-          }
-        },
-        {
-          "name": "i",
-          "type": "uint128"
-        }
-      ],
-      "outputs": {
-        "type": "uint128"
-      }
-    },
-    {
-      "name": "enc2",
-      "access": "read_only",
-      "args": [
-        {
-          "name": "b0",
-          "type": "uint128"
-        },
-        {
-          "name": "b1",
-          "type": "uint128"
-        }
-      ],
-      "outputs": {
-        "type": {
-          "buffer": {
-            "length": 3
-          }
-        }
-      }
-    },
-    {
-      "name": "enc3",
-      "access": "read_only",
-      "args": [
-        {
-          "name": "b0",
-          "type": "uint128"
-        },
-        {
-          "name": "b1",
-          "type": "uint128"
-        },
-        {
-          "name": "b2",
-          "type": "uint128"
-        }
-      ],
-      "outputs": {
-        "type": {
-          "buffer": {
-            "length": 4
-          }
-        }
-      }
-    },
-    {
       "name": "get-challenge-base64",
       "access": "read_only",
       "args": [
@@ -303,8 +253,20 @@ export const passkeyNotSenderAbi = {
           "type": "uint128"
         },
         {
-          "name": "recipient",
-          "type": "principal"
+          "name": "name",
+          "type": {
+            "buffer": {
+              "length": 48
+            }
+          }
+        },
+        {
+          "name": "namespace",
+          "type": {
+            "buffer": {
+              "length": 20
+            }
+          }
         },
         {
           "name": "memo",
@@ -405,8 +367,20 @@ export const passkeyNotSenderAbi = {
           "type": "uint128"
         },
         {
-          "name": "recipient",
-          "type": "principal"
+          "name": "name",
+          "type": {
+            "buffer": {
+              "length": 48
+            }
+          }
+        },
+        {
+          "name": "namespace",
+          "type": {
+            "buffer": {
+              "length": 20
+            }
+          }
         },
         {
           "name": "memo",
@@ -429,6 +403,55 @@ export const passkeyNotSenderAbi = {
             "length": 32
           }
         }
+      }
+    },
+    {
+      "name": "invariant-rp-id-defaults-to-zero",
+      "access": "read_only",
+      "args": [],
+      "outputs": {
+        "type": "bool"
+      }
+    },
+    {
+      "name": "invariant-rp-id-well-formed",
+      "access": "read_only",
+      "args": [],
+      "outputs": {
+        "type": "bool"
+      }
+    },
+    {
+      "name": "invariant-transfer-requires-rp-id",
+      "access": "read_only",
+      "args": [],
+      "outputs": {
+        "type": "bool"
+      }
+    },
+    {
+      "name": "name-has-received",
+      "access": "read_only",
+      "args": [
+        {
+          "name": "name",
+          "type": {
+            "buffer": {
+              "length": 48
+            }
+          }
+        },
+        {
+          "name": "namespace",
+          "type": {
+            "buffer": {
+              "length": 20
+            }
+          }
+        }
+      ],
+      "outputs": {
+        "type": "bool"
       }
     },
     {
@@ -440,8 +463,20 @@ export const passkeyNotSenderAbi = {
           "type": "uint128"
         },
         {
-          "name": "recipient",
-          "type": "principal"
+          "name": "name",
+          "type": {
+            "buffer": {
+              "length": 48
+            }
+          }
+        },
+        {
+          "name": "namespace",
+          "type": {
+            "buffer": {
+              "length": 20
+            }
+          }
         },
         {
           "name": "memo",
@@ -465,75 +500,9 @@ export const passkeyNotSenderAbi = {
           }
         }
       }
-    },
-    {
-      "name": "verify-assertion",
-      "access": "read_only",
-      "args": [
-        {
-          "name": "public-key",
-          "type": {
-            "buffer": {
-              "length": 33
-            }
-          }
-        },
-        {
-          "name": "challenge",
-          "type": {
-            "buffer": {
-              "length": 32
-            }
-          }
-        },
-        {
-          "name": "authenticator-data",
-          "type": {
-            "buffer": {
-              "length": 256
-            }
-          }
-        },
-        {
-          "name": "client-data-prefix",
-          "type": {
-            "buffer": {
-              "length": 128
-            }
-          }
-        },
-        {
-          "name": "client-data-suffix",
-          "type": {
-            "buffer": {
-              "length": 512
-            }
-          }
-        },
-        {
-          "name": "signature",
-          "type": {
-            "buffer": {
-              "length": 64
-            }
-          }
-        }
-      ],
-      "outputs": {
-        "type": "bool"
-      }
     }
   ],
   "variables": [
-    {
-      "name": "B64_ALPHABET",
-      "type": {
-        "buffer": {
-          "length": 64
-        }
-      },
-      "access": "constant"
-    },
     {
       "name": "DOMAIN_HASH",
       "type": {
@@ -564,16 +533,6 @@ export const passkeyNotSenderAbi = {
       "access": "constant"
     },
     {
-      "name": "ERR_BAD_AUTH_DATA",
-      "type": {
-        "response": {
-          "ok": "none",
-          "error": "uint128"
-        }
-      },
-      "access": "constant"
-    },
-    {
       "name": "ERR_BAD_NONCE",
       "type": {
         "response": {
@@ -584,7 +543,7 @@ export const passkeyNotSenderAbi = {
       "access": "constant"
     },
     {
-      "name": "ERR_BAD_RP_ID",
+      "name": "ERR_BAD_SIGNATURE",
       "type": {
         "response": {
           "ok": "none",
@@ -594,7 +553,17 @@ export const passkeyNotSenderAbi = {
       "access": "constant"
     },
     {
-      "name": "ERR_BAD_SIGNATURE",
+      "name": "ERR_NAME_ALREADY_RECEIVED",
+      "type": {
+        "response": {
+          "ok": "none",
+          "error": "uint128"
+        }
+      },
+      "access": "constant"
+    },
+    {
+      "name": "ERR_NAME_UNRESOLVED",
       "type": {
         "response": {
           "ok": "none",
@@ -634,6 +603,16 @@ export const passkeyNotSenderAbi = {
       "access": "constant"
     },
     {
+      "name": "ERR_RP_ID_HASH_FAILURE",
+      "type": {
+        "response": {
+          "ok": "none",
+          "error": "uint128"
+        }
+      },
+      "access": "constant"
+    },
+    {
       "name": "ERR_RP_ID_NOT_SET",
       "type": {
         "response": {
@@ -644,7 +623,7 @@ export const passkeyNotSenderAbi = {
       "access": "constant"
     },
     {
-      "name": "ERR_USER_NOT_PRESENT",
+      "name": "ERR_USER_NOT_VERIFIED",
       "type": {
         "response": {
           "ok": "none",
@@ -693,6 +672,22 @@ export const passkeyNotSenderAbi = {
   ],
   "maps": [
     {
+      "name": "context",
+      "key": {
+        "string-ascii": {
+          "length": 100
+        }
+      },
+      "value": {
+        "tuple": [
+          {
+            "name": "called",
+            "type": "uint128"
+          }
+        ]
+      }
+    },
+    {
       "name": "passkeys",
       "key": {
         "buffer": {
@@ -711,9 +706,37 @@ export const passkeyNotSenderAbi = {
           }
         ]
       }
+    },
+    {
+      "name": "received-names",
+      "key": {
+        "tuple": [
+          {
+            "name": "name",
+            "type": {
+              "buffer": {
+                "length": 48
+              }
+            }
+          },
+          {
+            "name": "namespace",
+            "type": {
+              "buffer": {
+                "length": 20
+              }
+            }
+          }
+        ]
+      },
+      "value": "bool"
     }
   ],
-  "fungible_tokens": [],
+  "fungible_tokens": [
+    {
+      "name": "anti-phishing"
+    }
+  ],
   "non_fungible_tokens": [],
   "epoch": "Epoch34"
 } as const;
