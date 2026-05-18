@@ -120,7 +120,8 @@ export interface PasskeyState {
 async function submitTransferToBackend(body: {
   publicKey: string;
   amount: string;
-  recipientAddress: string;
+  bnsName: string;
+  bnsNamespace: string;
   memo: string | undefined;
   nonce: number;
   authenticatorData: Uint8Array;
@@ -132,7 +133,8 @@ async function submitTransferToBackend(body: {
     body: {
       publicKey: body.publicKey,
       amount: body.amount,
-      recipientAddress: body.recipientAddress,
+      bnsName: body.bnsName,
+      bnsNamespace: body.bnsNamespace,
       memo: body.memo,
       nonce: body.nonce,
       authenticatorData: Array.from(body.authenticatorData),
@@ -149,6 +151,15 @@ async function submitTransferToBackend(body: {
     throw new Error(data?.error || "Transfer submission failed");
   }
   return { txId: data.txId };
+}
+
+/** Split "alice.btc" → { name: "alice", namespace: "btc" }. */
+function splitBnsName(bns: string): { name: string; namespace: string } {
+  const parts = bns.split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(`Invalid BNS name: ${bns}`);
+  }
+  return { name: parts[0], namespace: parts[1] };
 }
 
 export const NotTokenService = {
@@ -228,7 +239,8 @@ export const NotTokenService = {
    * WebAuthn challenge and is recomputed on-chain by the contract.
    */
   async createTransferMessage(params: {
-    recipientAddress: string;
+    bnsName: string;
+    bnsNamespace: string;
     amount: string;
     memo?: string;
     nonce: number;
@@ -237,7 +249,8 @@ export const NotTokenService = {
       tupleCV({
         topic: stringAsciiCV("not-transfer"),
         amount: uintCV(params.amount),
-        recipient: principalCV(params.recipientAddress),
+        name: bufferCVFromString(params.bnsName),
+        namespace: bufferCVFromString(params.bnsNamespace),
         memo: params.memo
           ? someCV(bufferCVFromString(params.memo))
           : noneCV(),
@@ -361,9 +374,14 @@ export const NotTokenService = {
         };
       }
 
-      // Step 3: Build the SIP-018 transfer message (the WebAuthn challenge)
+      // Step 3: Build the SIP-018 transfer message (the WebAuthn challenge).
+      // The contract now identifies the recipient by BNS name + namespace and
+      // resolves it on-chain, so the message tuple no longer carries a principal.
+      const { name: bnsName, namespace: bnsNamespace } =
+        splitBnsName(recipientBnsName);
       const message = await this.createTransferMessage({
-        recipientAddress,
+        bnsName,
+        bnsNamespace,
         amount,
         memo,
         nonce: state.nonce,
@@ -390,7 +408,8 @@ export const NotTokenService = {
       const { txId } = await submitTransferToBackend({
         publicKey,
         amount,
-        recipientAddress,
+        bnsName,
+        bnsNamespace,
         memo,
         nonce: state.nonce,
         authenticatorData,

@@ -108,8 +108,20 @@ export const passkeyNotSenderAbi = {
           "type": "uint128"
         },
         {
-          "name": "recipient",
-          "type": "principal"
+          "name": "name",
+          "type": {
+            "buffer": {
+              "length": 48
+            }
+          }
+        },
+        {
+          "name": "namespace",
+          "type": {
+            "buffer": {
+              "length": 20
+            }
+          }
         },
         {
           "name": "memo",
@@ -303,8 +315,20 @@ export const passkeyNotSenderAbi = {
           "type": "uint128"
         },
         {
-          "name": "recipient",
-          "type": "principal"
+          "name": "name",
+          "type": {
+            "buffer": {
+              "length": 48
+            }
+          }
+        },
+        {
+          "name": "namespace",
+          "type": {
+            "buffer": {
+              "length": 20
+            }
+          }
         },
         {
           "name": "memo",
@@ -405,8 +429,20 @@ export const passkeyNotSenderAbi = {
           "type": "uint128"
         },
         {
-          "name": "recipient",
-          "type": "principal"
+          "name": "name",
+          "type": {
+            "buffer": {
+              "length": 48
+            }
+          }
+        },
+        {
+          "name": "namespace",
+          "type": {
+            "buffer": {
+              "length": 20
+            }
+          }
         },
         {
           "name": "memo",
@@ -440,8 +476,20 @@ export const passkeyNotSenderAbi = {
           "type": "uint128"
         },
         {
-          "name": "recipient",
-          "type": "principal"
+          "name": "name",
+          "type": {
+            "buffer": {
+              "length": 48
+            }
+          }
+        },
+        {
+          "name": "namespace",
+          "type": {
+            "buffer": {
+              "length": 20
+            }
+          }
         },
         {
           "name": "memo",
