@@ -374,9 +374,14 @@ export const NotTokenService = {
         };
       }
 
-      // Step 3: Build the SIP-018 transfer message (the WebAuthn challenge)
+      // Step 3: Build the SIP-018 transfer message (the WebAuthn challenge).
+      // The contract now identifies the recipient by BNS name + namespace and
+      // resolves it on-chain, so the message tuple no longer carries a principal.
+      const { name: bnsName, namespace: bnsNamespace } =
+        splitBnsName(recipientBnsName);
       const message = await this.createTransferMessage({
-        recipientAddress,
+        bnsName,
+        bnsNamespace,
         amount,
         memo,
         nonce: state.nonce,
@@ -403,7 +408,8 @@ export const NotTokenService = {
       const { txId } = await submitTransferToBackend({
         publicKey,
         amount,
-        recipientAddress,
+        bnsName,
+        bnsNamespace,
         memo,
         nonce: state.nonce,
         authenticatorData,
