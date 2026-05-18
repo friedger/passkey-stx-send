@@ -22,7 +22,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
 const CONTRACT_ADDRESS =
-  (import.meta.env.VITE_PASSKEY_SENDER_ADDRESS as string | undefined) ?? "";
+  (import.meta.env.VITE_PASSKEY_SENDER_ADDRESS as string | undefined) ??
+  "SP3FFRX7C911PZP5RHE148YDVDD9JWVS6FXH7PE67";
 const CONTRACT_NAME = "passkey-not-sender";
 const CONTRACT_ID = `${CONTRACT_ADDRESS}.${CONTRACT_NAME}` as `${string}.${string}`;
 
