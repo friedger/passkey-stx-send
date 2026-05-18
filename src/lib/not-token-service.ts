@@ -120,7 +120,8 @@ export interface PasskeyState {
 async function submitTransferToBackend(body: {
   publicKey: string;
   amount: string;
-  recipientAddress: string;
+  bnsName: string;
+  bnsNamespace: string;
   memo: string | undefined;
   nonce: number;
   authenticatorData: Uint8Array;
@@ -132,7 +133,8 @@ async function submitTransferToBackend(body: {
     body: {
       publicKey: body.publicKey,
       amount: body.amount,
-      recipientAddress: body.recipientAddress,
+      bnsName: body.bnsName,
+      bnsNamespace: body.bnsNamespace,
       memo: body.memo,
       nonce: body.nonce,
       authenticatorData: Array.from(body.authenticatorData),
@@ -149,6 +151,15 @@ async function submitTransferToBackend(body: {
     throw new Error(data?.error || "Transfer submission failed");
   }
   return { txId: data.txId };
+}
+
+/** Split "alice.btc" → { name: "alice", namespace: "btc" }. */
+function splitBnsName(bns: string): { name: string; namespace: string } {
+  const parts = bns.split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(`Invalid BNS name: ${bns}`);
+  }
+  return { name: parts[0], namespace: parts[1] };
 }
 
 export const NotTokenService = {
