@@ -82,16 +82,16 @@ serve(async (req) => {
       contractName,
       functionName: "transfer-not",
       functionArgs: [
-        publicKey, // (buff 33)  public-key
+        normalizeHex(publicKey), // (buff 33)  public-key
         BigInt(amount), // uint        amount
         toHex(new TextEncoder().encode(name)), // (buff 48)  BNS name
         toHex(new TextEncoder().encode(namespace)), // (buff 20)  BNS namespace
         memo ? toHex(new TextEncoder().encode(memo)) : null, // (optional (buff 34)) memo
         BigInt(nonce), // uint        nonce
-        toHex(authenticatorData), // (buff 256) authenticator-data
-        toHex(clientDataPrefix), // (buff 128) client-data-prefix
-        toHex(clientDataSuffix), // (buff 512) client-data-suffix
-        toHex(signature), // (buff 64)  signature
+        typeof authenticatorData === "string" ? normalizeHex(authenticatorData) : toHex(authenticatorData),
+        typeof clientDataPrefix === "string" ? normalizeHex(clientDataPrefix) : toHex(clientDataPrefix),
+        typeof clientDataSuffix === "string" ? normalizeHex(clientDataSuffix) : toHex(clientDataSuffix),
+        typeof signature === "string" ? normalizeHex(signature) : toHex(signature),
       ],
       senderKey: privateKey,
       network: "mainnet",
