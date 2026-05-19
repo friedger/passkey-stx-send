@@ -17,6 +17,14 @@ function toHex(bytes: number[] | Uint8Array): `0x${string}` {
     .join("")}`;
 }
 
+/** Normalize a hex string (with or without 0x) to 0x-prefixed lowercase. */
+function normalizeHex(value: string): `0x${string}` {
+  const stripped = value.startsWith("0x") || value.startsWith("0X")
+    ? value.slice(2)
+    : value;
+  return `0x${stripped.toLowerCase()}`;
+}
+
 // Relays a passkey-signed NOT transfer to the passkey-not-sender contract.
 // Argument encoding is driven by the contract ABI via clarity-abitype's
 // `typedMakeContractCall` - no manual ClarityValue wrapping. The server only
