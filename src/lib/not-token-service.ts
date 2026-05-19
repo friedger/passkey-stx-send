@@ -87,10 +87,13 @@ const BNS_V2_CONTRACT = {
 
 // Passkey-verifying sender contract (contracts/passkey-not-sender.clar, Clarity 5).
 // Set VITE_PASSKEY_SENDER_ADDRESS to the deployer address after deployment.
+const DEFAULT_PASSKEY_SENDER_ADDRESS = "SP3FFRX7C911PZP5RHE148YDVDD9JWVS6FXH7PE67";
+const configuredPasskeySenderAddress = (
+  import.meta.env.VITE_PASSKEY_SENDER_ADDRESS as string | undefined
+)?.trim();
+
 const PASSKEY_SENDER_CONTRACT = {
-  address:
-    (import.meta.env.VITE_PASSKEY_SENDER_ADDRESS as string | undefined) ??
-    "SP3FFRX7C911PZP5RHE148YDVDD9JWVS6FXH7PE67",
+  address: configuredPasskeySenderAddress || DEFAULT_PASSKEY_SENDER_ADDRESS,
   name: "passkey-not-sender",
 };
 
