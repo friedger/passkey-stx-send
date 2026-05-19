@@ -57,10 +57,23 @@ serve(async (req) => {
       nonce,
     });
 
-    const privateKey = Deno.env.get("STX_PRIVATE_KEY");
-    const contractAddress = Deno.env.get("PASSKEY_CONTRACT_ADDRESS");
+    const privateKey = Deno.env.get("STX_PRIVATE_KEY")?.trim();
+    const rawContractAddress = Deno.env.get("PASSKEY_CONTRACT_ADDRESS")?.trim();
     const contractName =
-      Deno.env.get("PASSKEY_CONTRACT_NAME") ?? "passkey-not-sender";
+      Deno.env.get("PASSKEY_CONTRACT_NAME")?.trim() || "passkey-not-sender";
+
+    // PASSKEY_CONTRACT_ADDRESS may have been set as "SP....address.contract-name"
+    // by mistake — split on "." and use the principal as the address, the rest as name.
+    let contractAddress = rawContractAddress;
+    let resolvedContractName = contractName;
+    if (rawContractAddress && rawContractAddress.includes(".")) {
+      const [addr, ...rest] = rawContractAddress.split(".");
+      contractAddress = addr;
+      if (rest.length > 0 && rest.join(".")) {
+        resolvedContractName = rest.join(".");
+      }
+    }
+    console.log("Contract:", { contractAddress, contractName: resolvedContractName });
 
     if (!privateKey || !contractAddress) {
       console.error("Missing environment variables:", {
