@@ -17,6 +17,14 @@ function toHex(bytes: number[] | Uint8Array): `0x${string}` {
     .join("")}`;
 }
 
+/** Normalize a hex string (with or without 0x) to 0x-prefixed lowercase. */
+function normalizeHex(value: string): `0x${string}` {
+  const stripped = value.startsWith("0x") || value.startsWith("0X")
+    ? value.slice(2)
+    : value;
+  return `0x${stripped.toLowerCase()}`;
+}
+
 // Relays a passkey-signed NOT transfer to the passkey-not-sender contract.
 // Argument encoding is driven by the contract ABI via clarity-abitype's
 // `typedMakeContractCall` - no manual ClarityValue wrapping. The server only
@@ -49,10 +57,23 @@ serve(async (req) => {
       nonce,
     });
 
-    const privateKey = Deno.env.get("STX_PRIVATE_KEY");
-    const contractAddress = Deno.env.get("PASSKEY_CONTRACT_ADDRESS");
+    const privateKey = Deno.env.get("STX_PRIVATE_KEY")?.trim();
+    const rawContractAddress = Deno.env.get("PASSKEY_CONTRACT_ADDRESS")?.trim();
     const contractName =
-      Deno.env.get("PASSKEY_CONTRACT_NAME") ?? "passkey-not-sender";
+      Deno.env.get("PASSKEY_CONTRACT_NAME")?.trim() || "passkey-not-sender";
+
+    // PASSKEY_CONTRACT_ADDRESS may have been set as "SP....address.contract-name"
+    // by mistake — split on "." and use the principal as the address, the rest as name.
+    let contractAddress = rawContractAddress;
+    let resolvedContractName = contractName;
+    if (rawContractAddress && rawContractAddress.includes(".")) {
+      const [addr, ...rest] = rawContractAddress.split(".");
+      contractAddress = addr;
+      if (rest.length > 0 && rest.join(".")) {
+        resolvedContractName = rest.join(".");
+      }
+    }
+    console.log("Contract:", { contractAddress, contractName: resolvedContractName });
 
     if (!privateKey || !contractAddress) {
       console.error("Missing environment variables:", {
@@ -71,19 +92,19 @@ serve(async (req) => {
     const transaction = await typedMakeContractCall({
       abi: passkeyNotSenderAbi,
       contractAddress,
-      contractName,
+      contractName: resolvedContractName,
       functionName: "transfer-not",
       functionArgs: [
-        publicKey, // (buff 33)  public-key
+        normalizeHex(publicKey), // (buff 33)  public-key
         BigInt(amount), // uint        amount
         toHex(new TextEncoder().encode(name)), // (buff 48)  BNS name
         toHex(new TextEncoder().encode(namespace)), // (buff 20)  BNS namespace
         memo ? toHex(new TextEncoder().encode(memo)) : null, // (optional (buff 34)) memo
         BigInt(nonce), // uint        nonce
-        toHex(authenticatorData), // (buff 256) authenticator-data
-        toHex(clientDataPrefix), // (buff 128) client-data-prefix
-        toHex(clientDataSuffix), // (buff 512) client-data-suffix
-        toHex(signature), // (buff 64)  signature
+        typeof authenticatorData === "string" ? normalizeHex(authenticatorData) : toHex(authenticatorData),
+        typeof clientDataPrefix === "string" ? normalizeHex(clientDataPrefix) : toHex(clientDataPrefix),
+        typeof clientDataSuffix === "string" ? normalizeHex(clientDataSuffix) : toHex(clientDataSuffix),
+        typeof signature === "string" ? normalizeHex(signature) : toHex(signature),
       ],
       senderKey: privateKey,
       network: "mainnet",
