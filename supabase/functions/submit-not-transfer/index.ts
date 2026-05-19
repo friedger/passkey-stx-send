@@ -92,7 +92,7 @@ serve(async (req) => {
     const transaction = await typedMakeContractCall({
       abi: passkeyNotSenderAbi,
       contractAddress,
-      contractName,
+      contractName: resolvedContractName,
       functionName: "transfer-not",
       functionArgs: [
         normalizeHex(publicKey), // (buff 33)  public-key
