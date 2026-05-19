@@ -9,19 +9,18 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NotTokenService } from "@/lib/not-token-service";
+import { getErrorMessage } from "@/lib/utils";
 import { CheckCircle2, Loader2, Radio, User } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 interface NothingTransferProps {
   username: string;
-  credential: any;
   onLogout: () => void;
 }
 
 export const NothingTransfer = ({
   username,
-  credential,
   onLogout,
 }: NothingTransferProps) => {
   const [bnsName, setBnsName] = useState("");
@@ -123,9 +122,9 @@ export const NothingTransfer = ({
       setMemo("");
       setRecipientAddress("");
       
-    } catch (error: any) {
+    } catch (error) {
       console.error("Transfer error:", error);
-      toast.error("Failed to send Nothing: " + error.message);
+      toast.error("Failed to send Nothing: " + getErrorMessage(error));
     } finally {
       setIsLoading(false);
     }

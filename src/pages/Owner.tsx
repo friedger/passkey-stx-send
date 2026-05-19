@@ -4,11 +4,9 @@ import { connect, disconnect, getLocalStorage } from "@stacks/connect";
 import { typedCallContract } from "clarity-abitype/stacks-connect";
 import { cvToValue, fetchCallReadOnlyFunction } from "@stacks/transactions";
 import { STACKS_MAINNET } from "@stacks/network";
-import { bytesToHex } from "@stacks/common";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, ShieldCheck, Wallet } from "lucide-react";
 import { passkeyNotSenderAbi } from "@/contracts/passkey-not-sender-abi";
-import { sha256 } from "@/lib/sip-018";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -175,25 +173,22 @@ const Owner = () => {
           <>
             {/* set-rp-id-hash */}
             <OwnerAction
-              title="Set rp.id hash"
-              description="Sets sha256(rp.id) — the WebAuthn relying-party domain. Must be set before any transfer can succeed."
+              title="Set rp.id"
+              description="Sets the WebAuthn relying-party domain (rp.id). The contract stores its sha256. Must be set before any transfer can succeed."
               busy={busy === "rp"}
               disabled={!rpDomain.trim()}
-              submitLabel="Set rp.id hash"
+              submitLabel="Set rp.id"
               onSubmit={() =>
-                run("rp", async () => {
-                  const hash = await sha256(
-                    new TextEncoder().encode(rpDomain.trim())
-                  );
-                  return typedCallContract({
+                run("rp", () =>
+                  typedCallContract({
                     abi: passkeyNotSenderAbi,
                     contract: CONTRACT_ID,
                     functionName: "set-rp-id-hash",
-                    functionArgs: [`0x${bytesToHex(hash)}`],
+                    functionArgs: [rpDomain.trim()],
                     network: "mainnet",
                     postConditionMode: "allow",
-                  });
-                })
+                  })
+                )
               }
             >
               <Label htmlFor="rp">rp.id (domain)</Label>

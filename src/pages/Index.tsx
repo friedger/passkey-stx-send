@@ -7,18 +7,15 @@ import { NotTokenService } from '@/lib/not-token-service';
 const Index = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [username, setUsername] = useState('');
-  const [credential, setCredential] = useState<any>(null);
 
-  const handleAuthenticated = (user: string, cred: any) => {
+  const handleAuthenticated = (user: string) => {
     setUsername(user);
-    setCredential(cred);
     setIsAuthenticated(true);
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     setUsername('');
-    setCredential(null);
   };
 
   return (
@@ -49,9 +46,8 @@ const Index = () => {
           {!isAuthenticated ? (
             <PasskeyAuth onAuthenticated={handleAuthenticated} />
           ) : (
-            <NothingTransfer 
-              username={username} 
-              credential={credential}
+            <NothingTransfer
+              username={username}
               onLogout={handleLogout}
             />
           )}

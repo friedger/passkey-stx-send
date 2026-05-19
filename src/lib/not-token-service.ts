@@ -17,6 +17,7 @@ import {
 import { hexToBytes } from "@stacks/common";
 import { createMessage } from "./sip-018";
 import { derToRawSignature, splitClientData } from "./webauthn";
+import { getErrorMessage } from "./utils";
 import {
   buildNothingSentNote,
   deriveNostrKeyFromPrf,
@@ -445,11 +446,11 @@ export const NotTokenService = {
       });
 
       return { success: true, txId, recipientAddress, nostrSecretKey };
-    } catch (error: any) {
+    } catch (error) {
       console.error("Transfer error:", error);
       return {
         success: false,
-        error: error?.message || "Transfer failed",
+        error: getErrorMessage(error) || "Transfer failed",
       };
     }
   },

@@ -10,7 +10,6 @@ import { passkeyNotSenderAbi } from "../src/contracts/passkey-not-sender-abi";
 
 declare global {
   // `simnet` is injected by the clarinet vitest environment.
-  // eslint-disable-next-line no-var
   var simnet: Simnet;
 }
 

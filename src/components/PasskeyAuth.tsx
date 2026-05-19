@@ -10,13 +10,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { extractPublicKeyFromAuthenticatorData } from "@/lib/not-token-service";
 import { coseToCompressedPublicKey } from "@/lib/webauthn";
+import { getErrorMessage } from "@/lib/utils";
 import { bytesToHex } from "@stacks/common";
 import { Fingerprint, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 interface PasskeyAuthProps {
-  onAuthenticated: (username: string, credential: any) => void;
+  onAuthenticated: (username: string) => void;
 }
 
 export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
@@ -129,14 +130,14 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
         console.log("Stored Credential ID (base64):", base64Id);
 
         toast.success("Passkey created successfully!");
-        onAuthenticated(username, credential);
+        onAuthenticated(username);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Passkey creation error:", error);
-      if (error.name === "NotAllowedError") {
+      if (error instanceof DOMException && error.name === "NotAllowedError") {
         toast.error("Passkey creation was cancelled");
       } else {
-        toast.error("Failed to create passkey: " + error.message);
+        toast.error("Failed to create passkey: " + getErrorMessage(error));
       }
     } finally {
       setIsLoading(false);
@@ -198,11 +199,11 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
 
       if (assertion) {
         toast.success("Authentication successful!");
-        onAuthenticated(storedUsername, assertion);
+        onAuthenticated(storedUsername);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Authentication error:", error);
-      if (error.name === "NotAllowedError") {
+      if (error instanceof DOMException && error.name === "NotAllowedError") {
         toast.error("Authentication was cancelled");
       } else {
         toast.error("Authentication failed");
