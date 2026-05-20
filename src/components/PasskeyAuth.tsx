@@ -152,6 +152,31 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
         console.log("Stored Credential ID (base64):", base64Id);
 
         toast.success("Passkey created successfully!");
+
+        // Try to derive Nostr identity from PRF eval if available at creation.
+        // If not (most authenticators only return PRF on get()), perform a
+        // follow-up assertion to fetch it.
+        let derived = deriveNpubFromAssertion(credential);
+        if (!derived) {
+          try {
+            const follow = (await navigator.credentials.get({
+              publicKey: {
+                challenge: crypto.getRandomValues(new Uint8Array(32)),
+                allowCredentials: [
+                  { id: credential.rawId, type: "public-key", transports: ["internal"] },
+                ],
+                userVerification: "required",
+                timeout: 60000,
+                extensions: { prf: { eval: { first: nostrPrfSalt() } } },
+              } as PublicKeyCredentialRequestOptions,
+            })) as PublicKeyCredential | null;
+            if (follow) derived = deriveNpubFromAssertion(follow);
+          } catch (err) {
+            console.warn("PRF follow-up assertion failed:", err);
+          }
+        }
+        if (derived) setNpub(derived);
+
         onAuthenticated(username);
       }
     } catch (error) {
