@@ -28,6 +28,27 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
   // True when localStorage holds a partial passkey (e.g. a credential id but
   // no public key) — the passkey must be created again, not just authenticated.
   const [needsRecreate, setNeedsRecreate] = useState(false);
+  const [npub, setNpub] = useState<string | null>(null);
+
+  const deriveNpubFromAssertion = (
+    credential: PublicKeyCredential
+  ): string | null => {
+    const ext = credential.getClientExtensionResults() as {
+      prf?: { results?: { first?: ArrayBuffer } };
+    };
+    const prf = ext.prf?.results?.first;
+    if (!prf) {
+      console.warn("PRF output not available — cannot derive Nostr key");
+      return null;
+    }
+    try {
+      const key = deriveNostrKeyFromPrf(new Uint8Array(prf));
+      return getNpub(key);
+    } catch (err) {
+      console.error("Failed to derive Nostr key:", err);
+      return null;
+    }
+  };
 
   const createPasskey = async () => {
     if (!username.trim()) {
