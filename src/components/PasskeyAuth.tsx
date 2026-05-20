@@ -11,8 +11,9 @@ import { Label } from "@/components/ui/label";
 import { extractPublicKeyFromAuthenticatorData } from "@/lib/not-token-service";
 import { coseToCompressedPublicKey } from "@/lib/webauthn";
 import { getErrorMessage } from "@/lib/utils";
+import { deriveNostrKeyFromPrf, getNpub, nostrPrfSalt } from "@/lib/nostr";
 import { bytesToHex } from "@stacks/common";
-import { Fingerprint, Loader2 } from "lucide-react";
+import { Fingerprint, Loader2, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
