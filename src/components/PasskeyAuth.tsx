@@ -238,13 +238,16 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
           ],
           timeout: 60000,
           userVerification: "required",
-        };
+          extensions: { prf: { eval: { first: nostrPrfSalt() } } },
+        } as PublicKeyCredentialRequestOptions;
 
       const assertion = (await navigator.credentials.get({
         publicKey: publicKeyCredentialRequestOptions,
       })) as PublicKeyCredential;
 
       if (assertion) {
+        const derived = deriveNpubFromAssertion(assertion);
+        if (derived) setNpub(derived);
         toast.success("Authentication successful!");
         onAuthenticated(storedUsername);
       }
