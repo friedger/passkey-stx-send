@@ -112,7 +112,7 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
       // Request the PRF extension so the passkey can later derive a Nostr
       // identity for transfer announcements. Harmless if unsupported.
       (publicKeyCredentialCreationOptions as { extensions?: unknown }).extensions =
-        { prf: {} };
+        { prf: { eval: { first: nostrPrfSalt() } } };
 
       const credential = (await navigator.credentials.create({
         publicKey: publicKeyCredentialCreationOptions,
