@@ -11,8 +11,9 @@ import { Label } from "@/components/ui/label";
 import { extractPublicKeyFromAuthenticatorData } from "@/lib/not-token-service";
 import { coseToCompressedPublicKey } from "@/lib/webauthn";
 import { getErrorMessage } from "@/lib/utils";
+import { deriveNostrKeyFromPrf, getNpub, nostrPrfSalt } from "@/lib/nostr";
 import { bytesToHex } from "@stacks/common";
-import { Fingerprint, Loader2 } from "lucide-react";
+import { Fingerprint, Loader2, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -27,6 +28,27 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
   // True when localStorage holds a partial passkey (e.g. a credential id but
   // no public key) — the passkey must be created again, not just authenticated.
   const [needsRecreate, setNeedsRecreate] = useState(false);
+  const [npub, setNpub] = useState<string | null>(null);
+
+  const deriveNpubFromAssertion = (
+    credential: PublicKeyCredential
+  ): string | null => {
+    const ext = credential.getClientExtensionResults() as {
+      prf?: { results?: { first?: ArrayBuffer } };
+    };
+    const prf = ext.prf?.results?.first;
+    if (!prf) {
+      console.warn("PRF output not available — cannot derive Nostr key");
+      return null;
+    }
+    try {
+      const key = deriveNostrKeyFromPrf(new Uint8Array(prf));
+      return getNpub(key);
+    } catch (err) {
+      console.error("Failed to derive Nostr key:", err);
+      return null;
+    }
+  };
 
   const createPasskey = async () => {
     if (!username.trim()) {
@@ -90,7 +112,7 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
       // Request the PRF extension so the passkey can later derive a Nostr
       // identity for transfer announcements. Harmless if unsupported.
       (publicKeyCredentialCreationOptions as { extensions?: unknown }).extensions =
-        { prf: {} };
+        { prf: { eval: { first: nostrPrfSalt() } } };
 
       const credential = (await navigator.credentials.create({
         publicKey: publicKeyCredentialCreationOptions,
@@ -130,6 +152,31 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
         console.log("Stored Credential ID (base64):", base64Id);
 
         toast.success("Passkey created successfully!");
+
+        // Try to derive Nostr identity from PRF eval if available at creation.
+        // If not (most authenticators only return PRF on get()), perform a
+        // follow-up assertion to fetch it.
+        let derived = deriveNpubFromAssertion(credential);
+        if (!derived) {
+          try {
+            const follow = (await navigator.credentials.get({
+              publicKey: {
+                challenge: crypto.getRandomValues(new Uint8Array(32)),
+                allowCredentials: [
+                  { id: credential.rawId, type: "public-key", transports: ["internal"] },
+                ],
+                userVerification: "required",
+                timeout: 60000,
+                extensions: { prf: { eval: { first: nostrPrfSalt() } } },
+              } as PublicKeyCredentialRequestOptions,
+            })) as PublicKeyCredential | null;
+            if (follow) derived = deriveNpubFromAssertion(follow);
+          } catch (err) {
+            console.warn("PRF follow-up assertion failed:", err);
+          }
+        }
+        if (derived) setNpub(derived);
+
         onAuthenticated(username);
       }
     } catch (error) {
@@ -191,13 +238,16 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
           ],
           timeout: 60000,
           userVerification: "required",
-        };
+          extensions: { prf: { eval: { first: nostrPrfSalt() } } },
+        } as PublicKeyCredentialRequestOptions;
 
       const assertion = (await navigator.credentials.get({
         publicKey: publicKeyCredentialRequestOptions,
       })) as PublicKeyCredential;
 
       if (assertion) {
+        const derived = deriveNpubFromAssertion(assertion);
+        if (derived) setNpub(derived);
         toast.success("Authentication successful!");
         onAuthenticated(storedUsername);
       }
@@ -304,6 +354,30 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
             </>
           )}
         </Button>
+
+        {npub && (
+          <div className="rounded-lg border border-border/50 bg-muted/40 p-3 space-y-1">
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Your Nostr pubkey
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(npub);
+                  toast.success("npub copied");
+                }}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Copy npub"
+              >
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="font-mono text-xs break-all text-foreground">
+              {npub}
+            </p>
+          </div>
+        )}
 
         {hasPasskey && (
           <Button
