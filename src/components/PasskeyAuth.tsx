@@ -355,6 +355,30 @@ export const PasskeyAuth = ({ onAuthenticated }: PasskeyAuthProps) => {
           )}
         </Button>
 
+        {npub && (
+          <div className="rounded-lg border border-border/50 bg-muted/40 p-3 space-y-1">
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Your Nostr pubkey
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(npub);
+                  toast.success("npub copied");
+                }}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Copy npub"
+              >
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="font-mono text-xs break-all text-foreground">
+              {npub}
+            </p>
+          </div>
+        )}
+
         {hasPasskey && (
           <Button
             onClick={() => {
