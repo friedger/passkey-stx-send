@@ -24,7 +24,7 @@ export const NothingTransfer = ({
   onLogout,
 }: NothingTransferProps) => {
   const [bnsName, setBnsName] = useState("");
-  const [amount, setAmount] = useState("");
+  
   const [memo, setMemo] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [txId, setTxId] = useState("");
@@ -75,10 +75,6 @@ export const NothingTransfer = ({
       return;
     }
 
-    if (!amount || parseFloat(amount) <= 0) {
-      toast.error("Please enter a valid amount of Nothing");
-      return;
-    }
 
     setIsLoading(true);
     setTxId("");
@@ -102,7 +98,7 @@ export const NothingTransfer = ({
 
       const result = await NotTokenService.transfer({
         recipientBnsName: bnsName,
-        amount,
+        amount: "10000",
         memo,
         network,
       });
@@ -123,7 +119,6 @@ export const NothingTransfer = ({
       }
 
       setBnsName("");
-      setAmount("");
       setMemo("");
       setRecipientAddress("");
       
@@ -184,22 +179,12 @@ export const NothingTransfer = ({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="amount">How much Nothing?</Label>
-            <div className="relative">
-              <Input
-                id="amount"
-                type="number"
-                step="1"
-                min="1"
-                placeholder="0"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                disabled={isLoading}
-                className="pr-16"
-              />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-muted-foreground text-sm font-medium">
+            <Label>How much Nothing?</Label>
+            <div className="p-3 bg-muted/50 rounded-lg flex items-center justify-between">
+              <span className="font-semibold">10,000</span>
+              <span className="text-muted-foreground text-sm font-medium">
                 {NotTokenService.symbol}
-              </div>
+              </span>
             </div>
           </div>
 
@@ -220,7 +205,7 @@ export const NothingTransfer = ({
             className="w-full"
             variant="hero"
             size="lg"
-            disabled={isLoading || !bnsName.trim() || !amount}
+            disabled={isLoading || !bnsName.trim()}
           >
             {isLoading ? (
               <>
