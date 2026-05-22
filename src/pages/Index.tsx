@@ -30,7 +30,7 @@ const Index = () => {
               className="w-full h-full object-contain"
             />
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+          <h1 className="text-4xl md:text-5xl font-bold leading-[1.2] pb-1 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
             Send Nothing
           </h1>
           <p className="text-lg text-muted-foreground max-w-md mx-auto">
