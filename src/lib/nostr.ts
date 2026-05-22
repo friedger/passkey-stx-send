@@ -64,6 +64,28 @@ export function buildNothingSentNote(params: {
   return lines.join("\n");
 }
 
+/** Build the note content announcing that sending Nothing failed on-chain. */
+export function buildNothingFailedNote(params: {
+  txId: string;
+  memo?: string;
+  recipientBnsName: string;
+  network: string;
+  reason?: string;
+}): string {
+  const explorer = `https://explorer.hiro.so/txid/${params.txId}?chain=${params.network}`;
+  const lines = [
+    `💀 Tried to send Nothing to ${params.recipientBnsName} — and somehow even that failed.`,
+  ];
+  if (params.reason) {
+    lines.push("", `Reason: ${params.reason}`);
+  }
+  if (params.memo && params.memo.trim()) {
+    lines.push("", `"${params.memo.trim()}"`);
+  }
+  lines.push("", `Receipt of Nothing: ${explorer}`);
+  return lines.join("\n");
+}
+
 /** Publish a kind-1 text note; resolves once at least one relay accepts it. */
 export async function postNote(
   secretKey: Uint8Array,
