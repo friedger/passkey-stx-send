@@ -31,7 +31,7 @@ export const NothingTransfer = ({
   const [recipientAddress, setRecipientAddress] = useState("");
   const [network] = useState<"testnet" | "mainnet">("mainnet");
   const [nostrStatus, setNostrStatus] = useState<
-    "idle" | "waiting" | "posted" | "failed" | "unavailable"
+    "idle" | "waiting" | "posted" | "posted-failure" | "failed" | "unavailable"
   >("idle");
   const [nostrNote, setNostrNote] = useState<{
     noteUri: string;
@@ -53,9 +53,14 @@ export const NothingTransfer = ({
         network,
         nostrSecretKey,
       });
-      setNostrNote(result);
-      setNostrStatus("posted");
-      toast.success("Announced on Nostr 🟣");
+      setNostrNote({ noteUri: result.noteUri, npub: result.npub });
+      if (result.outcome === "success") {
+        setNostrStatus("posted");
+        toast.success("Announced on Nostr 🟣");
+      } else {
+        setNostrStatus("posted-failure");
+        toast.error("On-chain transfer failed — failure note posted on Nostr");
+      }
     } catch (error) {
       console.error("Nostr announcement failed:", error);
       setNostrStatus("failed");
