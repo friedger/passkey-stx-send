@@ -19,6 +19,7 @@ import { createMessage } from "./sip-018";
 import { derToRawSignature, splitClientData } from "./webauthn";
 import { getErrorMessage } from "./utils";
 import {
+  buildNothingFailedNote,
   buildNothingSentNote,
   deriveNostrKeyFromPrf,
   getNpub,
@@ -459,13 +460,18 @@ export const NotTokenService = {
   },
 
   /**
-   * Poll the Stacks API until the transaction is confirmed on-chain.
+   * Poll the Stacks API until the transaction lands. Returns the final
+   * on-chain status instead of throwing, so callers can react to both
+   * success and abort outcomes (e.g. announce different Nostr notes).
    */
   async waitForConfirmation(
     txId: string,
     network: Network = "mainnet",
     options: { intervalMs?: number; maxAttempts?: number } = {}
-  ): Promise<void> {
+  ): Promise<
+    | { status: "success" }
+    | { status: "failed"; reason: string }
+  > {
     const { intervalMs = 8000, maxAttempts = 90 } = options;
     const apiBase =
       network === "mainnet"
@@ -478,21 +484,17 @@ export const NotTokenService = {
         const res = await fetch(`${apiBase}/extended/v1/tx/${id}`);
         if (res.ok) {
           const data = await res.json();
-          if (data.tx_status === "success") return;
+          if (data.tx_status === "success") {
+            return { status: "success" };
+          }
           if (
             typeof data.tx_status === "string" &&
             data.tx_status.startsWith("abort")
           ) {
-            throw new Error(`Transaction failed on-chain (${data.tx_status})`);
+            return { status: "failed", reason: data.tx_status };
           }
         }
-      } catch (err) {
-        if (
-          err instanceof Error &&
-          err.message.startsWith("Transaction failed")
-        ) {
-          throw err;
-        }
+      } catch {
         // transient network/API error - keep polling
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
@@ -501,8 +503,8 @@ export const NotTokenService = {
   },
 
   /**
-   * Wait for the transfer to confirm, then publish a Nostr note announcing
-   * that Nothing was sent. The Nostr key is derived from the passkey PRF.
+   * Wait for the transfer to confirm, then publish a Nostr note. Posts a
+   * success note on `ok` and a failure note if the tx aborts on-chain.
    */
   async announceOnNostr(params: {
     txId: string;
@@ -510,7 +512,11 @@ export const NotTokenService = {
     memo?: string;
     network?: Network;
     nostrSecretKey: Uint8Array;
-  }): Promise<{ noteUri: string; npub: string }> {
+  }): Promise<{
+    noteUri: string;
+    npub: string;
+    outcome: "success" | "failed";
+  }> {
     const {
       txId,
       recipientBnsName,
@@ -519,16 +525,25 @@ export const NotTokenService = {
       nostrSecretKey,
     } = params;
 
-    await this.waitForConfirmation(txId, network);
+    const result = await this.waitForConfirmation(txId, network);
 
-    const content = buildNothingSentNote({
-      txId,
-      memo,
-      recipientBnsName,
-      network,
-    });
+    const content =
+      result.status === "success"
+        ? buildNothingSentNote({ txId, memo, recipientBnsName, network })
+        : buildNothingFailedNote({
+            txId,
+            memo,
+            recipientBnsName,
+            network,
+            reason: result.reason,
+          });
+
     const { noteUri } = await postNote(nostrSecretKey, content);
-    return { noteUri, npub: getNpub(nostrSecretKey) };
+    return {
+      noteUri,
+      npub: getNpub(nostrSecretKey),
+      outcome: result.status,
+    };
   },
 
   /**
