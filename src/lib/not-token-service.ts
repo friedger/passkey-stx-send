@@ -19,6 +19,7 @@ import { createMessage } from "./sip-018";
 import { derToRawSignature, splitClientData } from "./webauthn";
 import { getErrorMessage } from "./utils";
 import {
+  buildNothingFailedNote,
   buildNothingSentNote,
   deriveNostrKeyFromPrf,
   getNpub,
