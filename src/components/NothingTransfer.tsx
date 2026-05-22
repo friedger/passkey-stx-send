@@ -309,6 +309,24 @@ export const NothingTransfer = ({
                       </a>
                     </>
                   )}
+                  {nostrStatus === "posted-failure" && nostrNote && (
+                    <>
+                      <p className="font-semibold text-sm">
+                        On-chain transfer failed
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Posted a failure note from {nostrNote.npub}.
+                      </p>
+                      <a
+                        href={nostrNote.noteUri}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline inline-block mt-2"
+                      >
+                        View note →
+                      </a>
+                    </>
+                  )}
                   {nostrStatus === "failed" && (
                     <>
                       <p className="font-semibold text-sm">
